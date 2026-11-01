@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/dxo-core", "crates/dxo-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+hidapi = { version = "2.6", default-features = false, features = ["windows-native", "linux-native-basic-udev"] }
+# windows-native: pure-Rust Windows backend (no C hidapi to compile)
+# linux-native-basic-udev: lets the parsers/tests build on Linux without libudev
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "1"
+log = "0.4"
+env_logger = "0.11"
+crc32fast = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"

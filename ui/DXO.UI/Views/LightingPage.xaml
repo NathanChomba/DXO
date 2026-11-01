@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DXO.UI.Views.LightingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer>
+        <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4" MaxWidth="1200">
+            <TextBlock Text="Lighting" Style="{StaticResource DxoPageTitle}" />
+            <TextBlock Text="Light bar colour and player indicator LEDs." Style="{StaticResource DxoCaption}" Margin="0,0,0,8" />
+
+            <SelectorBar x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
+                <SelectorBarItem Text="Light bar" IsSelected="True" />
+                <SelectorBarItem Text="Player LEDs" />
+            </SelectorBar>
+
+            <!-- ===== Light bar tab: modes left, colour right ===== -->
+            <Grid x:Name="LightBarTab" ColumnSpacing="16" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="300" />
+                    <ColumnDefinition Width="1.3*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Spacing="4">
+                    <controls:SettingsCard Header="Brightness" Description="How bright the light bar is.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></controls:SettingsCard.HeaderIcon>
+                        <Slider x:Name="Brightness" Width="160" Minimum="0" Maximum="100" Value="90" ValueChanged="Brightness_ValueChanged" />
+                    </controls:SettingsCard>
+
+                    <TextBlock Text="Mode" Style="{StaticResource DxoSectionTitle}" />
+                    <RadioButtons x:Name="LightMode" SelectedIndex="0">
+                        <RadioButton Content="Static colour" />
+                        <RadioButton Content="Multi colour (coming later)" IsEnabled="False" />
+                        <RadioButton Content="Breathing (coming later)" IsEnabled="False" />
+                        <RadioButton Content="Strobe (coming later)" IsEnabled="False" />
+                        <RadioButton Content="Battery level (coming later)" IsEnabled="False" />
+                    </RadioButtons>
+                </StackPanel>
+
+                <Border Grid.Column="1" Style="{StaticResource DxoCard}">
+                    <StackPanel Spacing="12">
+                        <ColorPicker x:Name="Picker" ColorSpectrumShape="Ring"
+                                     IsAlphaEnabled="False" IsMoreButtonVisible="False"
+                                     IsColorPreviewVisible="True" IsHexInputVisible="True"
+                                     Color="#B26BFF" ColorChanged="Picker_ColorChanged" />
+                        <TextBlock Text="Swatches" Style="{StaticResource DxoCaption}" />
+                        <ItemsControl x:Name="Swatches">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="8" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Width="28" Height="28" Padding="0" CornerRadius="14" Background="{Binding}" Click="Swatch_Click" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===== Player LEDs tab ===== -->
+            <StackPanel x:Name="PlayerTab" Visibility="Collapsed" Spacing="4" Margin="0,8,0,0">
+                <InfoBar IsOpen="{x:Bind NotDualSense, Mode=OneWay}" IsClosable="False" Severity="Informational"
+                         Title="Needs a DualSense" Message="The DualShock 4 has no player LEDs; its light bar colour is the player indicator." />
+                <RadioButtons x:Name="PlayerLeds" SelectedIndex="1" SelectionChanged="PlayerLeds_SelectionChanged"
+                              IsEnabled="{x:Bind Device.IsDualSense, Mode=OneWay}">
+                    <RadioButton Content="Off            ○ ○ ○ ○ ○" />
+                    <RadioButton Content="Player one     ○ ○ ● ○ ○" />
+                    <RadioButton Content="Player two     ○ ● ○ ● ○" />
+                    <RadioButton Content="Player three   ● ○ ● ○ ●" />
+                    <RadioButton Content="Player four    ● ● ○ ● ●" />
+                    <RadioButton Content="All on         ● ● ● ● ●" />
+                </RadioButtons>
+            </StackPanel>
+
+            <Button Content="Reset to profile" Margin="0,12,0,0" Click="Reset_Click" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

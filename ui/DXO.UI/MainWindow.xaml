@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="DXO.UI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="DXO">
+
+    <Grid Background="{StaticResource DxoWindowBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Custom title bar ===== -->
+        <Grid x:Name="AppTitleBar" Padding="14,0,140,0">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <!-- DXO mark: simple diamond, DXO's own -->
+                <Grid Width="16" Height="16">
+                    <Rectangle Width="11" Height="11" Fill="{StaticResource DxoAccent}" RadiusX="2" RadiusY="2">
+                        <Rectangle.RenderTransform>
+                            <RotateTransform Angle="45" CenterX="5.5" CenterY="5.5" />
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
+                </Grid>
+                <TextBlock Text="DXO" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="v0.1" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ===== Nav + content ===== -->
+        <NavigationView x:Name="Nav" Grid.Row="1"
+                        PaneDisplayMode="Left"
+                        OpenPaneLength="220"
+                        CompactModeThresholdWidth="0"
+                        ExpandedModeThresholdWidth="1000"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="True"
+                        IsPaneToggleButtonVisible="True"
+                        SelectionChanged="Nav_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Home" Tag="home">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="My Controller" Tag="controller">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7FC;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Profiles" Tag="profiles">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+
+                <NavigationViewItemSeparator />
+                <NavigationViewItemHeader Content="Configure" />
+                <NavigationViewItem Content="Mappings" Tag="mappings">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Virtual Device" Tag="virtual">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Adaptive Triggers" Tag="triggers">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE945;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Lighting" Tag="lighting">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE790;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Haptics and Rumble" Tag="haptics">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE995;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Motion" Tag="motion">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7AD;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+
+                <NavigationViewItemSeparator />
+                <NavigationViewItem Content="Games" Tag="games">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="About" Tag="about">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE946;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- ===== Device header card (always visible) ===== -->
+                <Grid Margin="24,8,24,4" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Padding="12,8" HorizontalAlignment="Left"
+                        Background="{StaticResource DxoSurface}" BorderBrush="{StaticResource DxoStroke}"
+                        CornerRadius="{StaticResource DxoCardRadius}" Click="DeviceCard_Click"
+                        ToolTipService.ToolTip="Open My Controller">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Grid Width="36" Height="36">
+                            <Ellipse x:Name="StatusRing" StrokeThickness="2" Stroke="{StaticResource DxoSuccess}" />
+                            <FontIcon Glyph="&#xE7FC;" FontSize="18" />
+                        </Grid>
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <TextBlock Text="{x:Bind Device.DeviceName, Mode=OneWay}" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="{x:Bind Device.ProfileName, Mode=OneWay}" Style="{StaticResource DxoCaption}" />
+                                <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind Device.Connected, Mode=OneWay}">
+                                    <FontIcon Glyph="{x:Bind Device.TransportGlyph, Mode=OneWay}" FontSize="12" />
+                                    <TextBlock Text="{x:Bind Device.TransportText, Mode=OneWay}" Style="{StaticResource DxoCaption}" />
+                                    <TextBlock Text="·" Style="{StaticResource DxoCaption}" />
+                                    <TextBlock Text="{x:Bind Device.BatteryText, Mode=OneWay}" Style="{StaticResource DxoCaption}" />
+                                    <TextBlock Text="·" Style="{StaticResource DxoCaption}" />
+                                    <TextBlock Text="{x:Bind Device.RateText, Mode=OneWay}" Style="{StaticResource DxoCaption}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+
+                <InfoBar Grid.Column="1" VerticalAlignment="Center"
+                         IsClosable="False" Severity="Warning"
+                         IsOpen="{x:Bind Device.HasStatus, Mode=OneWay}"
+                         Message="{x:Bind Device.Status, Mode=OneWay}" />
+                </Grid>
+
+                <Frame x:Name="ContentFrame" Grid.Row="1" />
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>

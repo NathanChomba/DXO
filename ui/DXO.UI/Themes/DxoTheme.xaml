@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DXO visual tokens. See DESIGN.md section 4. Change DxoAccentColor to re-skin the app. -->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Colours ===== -->
+    <Color x:Key="DxoAccentColor">#B26BFF</Color>
+    <Color x:Key="DxoAccentSoftColor">#2EB26BFF</Color>
+    <Color x:Key="DxoWindowTopColor">#3A2F40</Color>
+    <Color x:Key="DxoWindowBottomColor">#1E1624</Color>
+    <Color x:Key="DxoNavColor">#221C29</Color>
+    <Color x:Key="DxoSurfaceColor">#2F2838</Color>
+    <Color x:Key="DxoSurfaceRaisedColor">#3B3246</Color>
+    <Color x:Key="DxoStrokeColor">#14FFFFFF</Color>
+    <Color x:Key="DxoTextSecondaryColor">#9EFFFFFF</Color>
+    <Color x:Key="DxoSuccessColor">#3DDC84</Color>
+    <Color x:Key="DxoWarningColor">#F2B544</Color>
+    <Color x:Key="DxoDangerColor">#FF5A6E</Color>
+
+    <!-- ===== Brushes ===== -->
+    <SolidColorBrush x:Key="DxoAccent" Color="{StaticResource DxoAccentColor}" />
+    <SolidColorBrush x:Key="DxoAccentSoft" Color="{StaticResource DxoAccentSoftColor}" />
+    <SolidColorBrush x:Key="DxoNav" Color="{StaticResource DxoNavColor}" />
+    <SolidColorBrush x:Key="DxoSurface" Color="{StaticResource DxoSurfaceColor}" />
+    <SolidColorBrush x:Key="DxoSurfaceRaised" Color="{StaticResource DxoSurfaceRaisedColor}" />
+    <SolidColorBrush x:Key="DxoStroke" Color="{StaticResource DxoStrokeColor}" />
+    <SolidColorBrush x:Key="DxoTextSecondary" Color="{StaticResource DxoTextSecondaryColor}" />
+    <SolidColorBrush x:Key="DxoSuccess" Color="{StaticResource DxoSuccessColor}" />
+    <SolidColorBrush x:Key="DxoWarning" Color="{StaticResource DxoWarningColor}" />
+    <SolidColorBrush x:Key="DxoDanger" Color="{StaticResource DxoDangerColor}" />
+
+    <LinearGradientBrush x:Key="DxoWindowBackground" StartPoint="0,0" EndPoint="0.4,1">
+        <GradientStop Color="{StaticResource DxoWindowTopColor}" Offset="0" />
+        <GradientStop Color="{StaticResource DxoWindowBottomColor}" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- DXO's own hero art: abstract accent glow, no photos -->
+    <LinearGradientBrush x:Key="DxoHeroBackground" StartPoint="0,1" EndPoint="1,0">
+        <GradientStop Color="#1A1222" Offset="0" />
+        <GradientStop Color="#3A1F5C" Offset="0.6" />
+        <GradientStop Color="#6A3BA8" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Point WinUI's own accent at ours so toggles, sliders, radio buttons,
+         the nav selection bar and accent buttons all pick it up. -->
+    <Color x:Key="SystemAccentColor">#B26BFF</Color>
+    <Color x:Key="SystemAccentColorLight1">#C48CFF</Color>
+    <Color x:Key="SystemAccentColorLight2">#D6ADFF</Color>
+    <Color x:Key="SystemAccentColorLight3">#E8D1FF</Color>
+    <Color x:Key="SystemAccentColorDark1">#9A4FF0</Color>
+    <Color x:Key="SystemAccentColorDark2">#7D36D1</Color>
+    <Color x:Key="SystemAccentColorDark3">#5E22A6</Color>
+
+    <!-- Cards blend into the plum background instead of default grey -->
+    <SolidColorBrush x:Key="SettingsCardBackground" Color="{StaticResource DxoSurfaceColor}" />
+    <SolidColorBrush x:Key="SettingsCardBackgroundPointerOver" Color="{StaticResource DxoSurfaceRaisedColor}" />
+    <SolidColorBrush x:Key="SettingsCardBorderBrush" Color="{StaticResource DxoStrokeColor}" />
+    <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+
+    <!-- ===== Shapes and spacing ===== -->
+    <CornerRadius x:Key="DxoCardRadius">8</CornerRadius>
+    <CornerRadius x:Key="DxoRowRadius">6</CornerRadius>
+    <Thickness x:Key="DxoPagePadding">24,16,24,24</Thickness>
+    <x:Double x:Key="DxoRowSpacing">4</x:Double>
+
+    <!-- ===== Styles ===== -->
+    <Style x:Key="DxoCard" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource DxoSurface}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DxoStroke}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource DxoCardRadius}" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <!-- Quick-action tile on Home: card-looking button -->
+    <Style x:Key="DxoTile" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource DxoSurface}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DxoStroke}" />
+        <Setter Property="CornerRadius" Value="{StaticResource DxoCardRadius}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="16,12" />
+        <Setter Property="Margin" Value="0,0,8,8" />
+    </Style>
+
+    <Style x:Key="DxoPageTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+
+    <Style x:Key="DxoSectionTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,16,0,6" />
+    </Style>
+
+    <Style x:Key="DxoCaption" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource DxoTextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="DxoValue" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+</ResourceDictionary>

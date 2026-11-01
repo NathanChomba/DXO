@@ -1,0 +1,9 @@
+# Example game profile: switches on automatically when eldenring.exe is in front.
+name = "Elden Ring"
+match_process = ["eldenring.exe"]
+lightbar = [255, 140, 0]
+remap = [["touchpad", "select"]]
+
+[right_stick]
+deadzone = 0.06
+curve = { type = "smooth", amount = 0.4 }

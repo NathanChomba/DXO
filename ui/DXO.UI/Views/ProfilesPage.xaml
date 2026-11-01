@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DXO.UI.Views.ProfilesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- M5: profile list + editor.
+         TODO: list *.toml from the profiles folder, edit deadzones/curves/
+         remaps/lightbar/match_process, save with Tomlyn (NuGet), then call
+         App.Engine.LoadProfile(path). The engine already auto-switches
+         profiles by foreground exe. -->
+    <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="12">
+        <TextBlock Style="{StaticResource DxoPageTitle}" Text="Profiles" />
+        <TextBlock Text="Load a profile TOML. The editor arrives in milestone 5." Opacity="0.75" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Load profile..." Click="Load_Click" />
+            <TextBlock x:Name="Result" VerticalAlignment="Center" />
+        </StackPanel>
+    </StackPanel>
+</Page>

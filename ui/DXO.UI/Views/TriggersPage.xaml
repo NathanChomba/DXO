@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DXO.UI.Views.TriggersPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4" MaxWidth="1200">
+            <TextBlock Text="Adaptive Triggers" Style="{StaticResource DxoPageTitle}" />
+            <TextBlock Text="Add resistance or a click to L2 and R2." Style="{StaticResource DxoCaption}" Margin="0,0,0,8" />
+
+            <InfoBar IsOpen="{x:Bind NotDualSense, Mode=OneWay}" IsClosable="False" Severity="Informational"
+                     Title="Needs a DualSense"
+                     Message="Adaptive triggers are a DualSense and DualSense Edge feature. Your settings are kept and apply when one is connected." />
+
+            <!-- Two columns: Left trigger | Right trigger -->
+            <Grid ColumnSpacing="16" Margin="0,8,0,0" IsHitTestVisible="{x:Bind Device.IsDualSense, Mode=OneWay}"
+                  Opacity="{x:Bind PanelOpacity, Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Style="{StaticResource DxoCard}">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Left trigger (L2)" FontSize="16" FontWeight="SemiBold" />
+                        <RadioButtons x:Name="LeftMode" SelectedIndex="0" SelectionChanged="Changed">
+                            <RadioButton Content="Off - normal trigger" />
+                            <RadioButton Content="Feedback - resists past the start position" />
+                            <RadioButton Content="Weapon - snaps like a gun trigger" />
+                        </RadioButtons>
+                        <Slider x:Name="LeftStart" Header="Start position" Minimum="0" Maximum="9" Value="3" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                        <Slider x:Name="LeftEnd" Header="End position (weapon)" Minimum="2" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                        <Slider x:Name="LeftStrength" Header="Strength" Minimum="1" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource DxoCard}">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Right trigger (R2)" FontSize="16" FontWeight="SemiBold" />
+                        <RadioButtons x:Name="RightMode" SelectedIndex="0" SelectionChanged="Changed">
+                            <RadioButton Content="Off - normal trigger" />
+                            <RadioButton Content="Feedback - resists past the start position" />
+                            <RadioButton Content="Weapon - snaps like a gun trigger" />
+                        </RadioButtons>
+                        <Slider x:Name="RightStart" Header="Start position" Minimum="0" Maximum="9" Value="3" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                        <Slider x:Name="RightEnd" Header="End position (weapon)" Minimum="2" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                        <Slider x:Name="RightStrength" Header="Strength" Minimum="1" Maximum="8" Value="8" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Button Content="Reset to profile" Margin="0,12,0,0" Click="Reset_Click" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

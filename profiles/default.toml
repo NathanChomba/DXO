@@ -1,0 +1,29 @@
+# Default profile. Copy this file to make game profiles; set match_process
+# to the game's exe name and the engine switches to it automatically (M5).
+name = "Default"
+match_process = []
+target = "xbox360"           # xbox360 | dual_shock4 (later) | none
+trigger_deadzone = 0.02
+remap = []                   # e.g. [["cross", "circle"], ["circle", "cross"]]
+lightbar = [0, 64, 255]
+player_leds = 4              # bitmask of the 5 DualSense player LEDs
+hide_physical = true         # cloak the real pad with HidHide
+idle_disconnect_min = 15     # Bluetooth only (M6), 0 = never
+
+[left_stick]
+deadzone = 0.08
+outer = 0.98
+invert_y = false
+curve = { type = "linear" }
+
+[right_stick]
+deadzone = 0.08
+outer = 0.98
+invert_y = false
+curve = { type = "power", exponent = 1.5 }
+
+[gyro]
+cemuhook_server = false      # M5: motion for Cemu/Dolphin/etc. on UDP 26760
+cemuhook_port = 26760
+to_mouse = false
+sensitivity = 1.0

@@ -1,0 +1,28 @@
+[package]
+name = "dxo-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "dxo_core"
+# cdylib  -> dxo_core.dll for the WinUI front end (P/Invoke)
+# rlib    -> linked directly by dxo-cli and tests
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hidapi.workspace = true
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+log.workspace = true
+crc32fast.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+vigem-client = "0.1"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }

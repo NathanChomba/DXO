@@ -1,0 +1,16 @@
+[package]
+name = "dxo-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dxo"
+path = "src/main.rs"
+
+[dependencies]
+dxo-core = { path = "../dxo-core" }
+hidapi.workspace = true
+log.workspace = true
+env_logger.workspace = true
+ctrlc = "3"
