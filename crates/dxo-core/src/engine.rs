@@ -116,6 +116,7 @@ impl Drop for Engine {
 struct Live {
     dev: Device,
     vpad: Box<dyn VirtualPad>,
+    game_rumble: virtual_pad::Rumble,
     hidden_instance: Option<String>,
     last_output: Option<OutputState>,
     last_output_sent: Instant,
@@ -247,10 +248,13 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             trigger_right: TriggerEffect::Off,
             ..Default::default()
         });
+        // Game rumble persists until the game changes it, so remember it
+        // rather than applying it only on the frame it arrives.
         if let Some(r) = l.vpad.poll_rumble() {
-            out.rumble_left = r.large;
-            out.rumble_right = r.small;
+            l.game_rumble = r;
         }
+        out.rumble_left = out.rumble_left.max(l.game_rumble.large);
+        out.rumble_right = out.rumble_right.max(l.game_rumble.small);
         // Send on change, plus a 1 s keep-alive (some pads revert otherwise).
         if l.last_output != Some(out) || l.last_output_sent.elapsed() > Duration::from_secs(1) {
             l.bt_seq = (l.bt_seq + 1) & 0x0F;
@@ -302,6 +306,7 @@ fn connect(api: &HidApi, cfg: &EngineConfig, sh: &Shared, hh: Option<&HidHide>) 
         last_output: None,
         last_output_sent: Instant::now(),
         bt_seq: 0,
+        game_rumble: Default::default(),
     })
 }
 

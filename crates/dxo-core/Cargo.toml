@@ -19,7 +19,8 @@ log.workspace = true
 crc32fast.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-vigem-client = "0.1"
+# unstable_xtarget_notification: lets us receive rumble games send to the virtual pad
+vigem-client = { version = "0.1", features = ["unstable_xtarget_notification"] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Security",

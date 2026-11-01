@@ -16,8 +16,7 @@ pub struct Rumble {
 
 pub trait VirtualPad: Send {
     fn update(&mut self, s: &PadState) -> Result<()>;
-    /// Latest rumble from the game, if it changed. TODO M3: wire up ViGEm
-    /// notifications (vigem-client `unstable_xtarget_notification` feature).
+    /// Latest rumble from the game, if it changed since the last call.
     fn poll_rumble(&mut self) -> Option<Rumble> {
         None
     }
@@ -109,11 +108,21 @@ impl VirtualPad for NullPad {
 pub mod vigem {
     use super::*;
     use crate::error::Error;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
     use vigem_client::{Client, TargetId, XButtons, XGamepad, Xbox360Wired};
 
+    /// Latest rumble from the game, packed so the notification thread and the
+    /// engine thread can share it without a lock:
+    ///   bits 0-7 small motor, bits 8-15 large motor, bit 16 = "changed".
+    const CHANGED: u32 = 1 << 16;
+
     pub struct ViGEmXbox {
+        // Field order matters: `target` drops first, which unplugs the pad and
+        // makes the notification thread exit on its own.
         target: Xbox360Wired<Client>,
         last: XInputReport,
+        rumble: Arc<AtomicU32>,
     }
 
     impl ViGEmXbox {
@@ -122,11 +131,31 @@ pub mod vigem {
             let mut target = Xbox360Wired::new(client, TargetId::XBOX360_WIRED);
             target.plugin().map_err(|e| Error::Virtual(format!("plugin: {e:?}")))?;
             target.wait_ready().map_err(|e| Error::Virtual(format!("wait_ready: {e:?}")))?;
-            Ok(Self { target, last: XInputReport { buttons: 1, ..Default::default() } })
+
+            // Games send rumble to the virtual pad; ViGEm hands it to us here.
+            let rumble = Arc::new(AtomicU32::new(0));
+            match target.request_notification() {
+                Ok(req) => {
+                    let r2 = rumble.clone();
+                    // Detached on purpose: it ends when the target is unplugged.
+                    let _ = req.spawn_thread(move |_, n| {
+                        let packed = (n.small_motor as u32) | ((n.large_motor as u32) << 8) | CHANGED;
+                        r2.store(packed, Ordering::Release);
+                    });
+                }
+                Err(e) => log::warn!("rumble notifications unavailable: {e:?}"),
+            }
+
+            Ok(Self { target, last: XInputReport { buttons: 1, ..Default::default() }, rumble })
         }
     }
 
     impl VirtualPad for ViGEmXbox {
+        fn poll_rumble(&mut self) -> Option<Rumble> {
+            let v = self.rumble.fetch_and(!CHANGED, Ordering::AcqRel);
+            (v & CHANGED != 0).then(|| Rumble { large: (v >> 8) as u8, small: v as u8 })
+        }
+
         fn update(&mut self, s: &PadState) -> Result<()> {
             let r = to_xinput(s);
             if r == self.last {
