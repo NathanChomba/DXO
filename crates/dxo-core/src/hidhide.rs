@@ -15,7 +15,13 @@ use crate::error::{Error, Result};
 use std::path::PathBuf;
 use std::process::Command;
 
-const DEFAULT_CLI: &str = r"C:\Program Files\Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe";
+/// Install locations seen across HidHide versions / installers.
+const CANDIDATES: &[&str] = &[
+    r"C:\Program Files\Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe",
+    r"C:\Program Files\Nefarius Software Solutions\HidHide\HidHideCLI.exe",
+    r"C:\Program Files\Nefarius Software Solutions e.U\HidHide\x64\HidHideCLI.exe",
+    r"C:\Program Files\HidHide\x64\HidHideCLI.exe",
+];
 
 pub struct HidHide {
     cli: PathBuf,
@@ -23,20 +29,51 @@ pub struct HidHide {
 
 impl HidHide {
     pub fn locate() -> Result<HidHide> {
-        let cli = PathBuf::from(DEFAULT_CLI);
-        if cli.exists() {
-            Ok(HidHide { cli })
-        } else {
-            Err(Error::HidHide("HidHideCLI.exe not found - is HidHide installed?".into()))
+        // DXO_HIDHIDE_CLI lets you point at a non-standard install.
+        if let Ok(p) = std::env::var("DXO_HIDHIDE_CLI") {
+            let cli = PathBuf::from(p);
+            if cli.exists() {
+                return Ok(HidHide { cli });
+            }
         }
+        for c in CANDIDATES {
+            let cli = PathBuf::from(c);
+            if cli.exists() {
+                return Ok(HidHide { cli });
+            }
+        }
+        Err(Error::HidHide(format!(
+            "HidHideCLI.exe not found (looked in {} places). Is HidHide installed? \
+             Set DXO_HIDHIDE_CLI to its full path if it lives elsewhere.",
+            CANDIDATES.len()
+        )))
+    }
+
+    pub fn cli_path(&self) -> &std::path::Path {
+        &self.cli
     }
 
     fn run(&self, args: &[&str]) -> Result<String> {
         let out = Command::new(&self.cli).args(args).output()?;
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         if !out.status.success() {
-            return Err(Error::HidHide(String::from_utf8_lossy(&out.stderr).into_owned()));
+            // HidHide changes need admin rights; say so instead of failing silently.
+            let hint = if cfg!(windows) && (stderr.contains("ccess") || stdout.contains("ccess")) {
+                " (run DXO from an Administrator terminal)"
+            } else {
+                ""
+            };
+            return Err(Error::HidHide(format!(
+                "`HidHideCLI {}` failed with {}: {}{}{}",
+                args.join(" "),
+                out.status,
+                stderr.trim(),
+                stdout.trim(),
+                hint
+            )));
         }
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        Ok(stdout)
     }
 
     pub fn whitelist_self(&self) -> Result<()> {

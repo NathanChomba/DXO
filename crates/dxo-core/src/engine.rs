@@ -130,10 +130,25 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             return;
         }
     };
-    let hidhide = if cfg.enable_virtual { HidHide::locate().ok() } else { None };
-    if let Some(h) = &hidhide {
-        let _ = h.whitelist_self();
-    }
+    let hidhide = if cfg.enable_virtual {
+        match HidHide::locate() {
+            Ok(h) => {
+                log::info!("HidHide CLI: {}", h.cli_path().display());
+                match h.whitelist_self() {
+                    Ok(()) => log::info!("HidHide: DXO whitelisted"),
+                    Err(e) => log::warn!("HidHide whitelist failed: {e}"),
+                }
+                Some(h)
+            }
+            Err(e) => {
+                log::warn!("{e} - the physical controller will NOT be hidden (double input)");
+                sh.snapshot.lock().unwrap().last_error = Some(e.to_string());
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let profiles = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
     let mut fg = Watcher::default();
@@ -265,11 +280,18 @@ fn connect(api: &HidApi, cfg: &EngineConfig, sh: &Shared, hh: Option<&HidHide>) 
 
     let mut hidden_instance = None;
     if cfg.enable_virtual && profile.hide_physical {
-        if let (Some(h), Some(id)) = (hh, hidhide::instance_id_from_path(&dev.info.path.to_string_lossy())) {
-            match h.hide(&id) {
-                Ok(()) => hidden_instance = Some(id),
-                Err(e) => log::warn!("HidHide: {e}"),
-            }
+        let path = dev.info.path.to_string_lossy().into_owned();
+        match (hh, hidhide::instance_id_from_path(&path)) {
+            (Some(h), Some(id)) => match h.hide(&id) {
+                Ok(()) => {
+                    log::info!("HidHide: hid {id}");
+                    log::info!("HidHide: apps that already had the controller open (browsers, Steam) keep seeing it until they restart or the pad reconnects");
+                    hidden_instance = Some(id);
+                }
+                Err(e) => log::warn!("HidHide hide failed: {e}"),
+            },
+            (Some(_), None) => log::warn!("HidHide: could not turn device path into an instance id: {path}"),
+            (None, _) => {}
         }
     }
 
