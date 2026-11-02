@@ -14,15 +14,8 @@
         <!-- ===== Custom title bar ===== -->
         <Grid x:Name="AppTitleBar" Padding="14,0,140,0">
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <!-- DXO mark: simple diamond, DXO's own -->
-                <Grid Width="16" Height="16">
-                    <Rectangle Width="11" Height="11" Fill="{StaticResource DxoAccent}" RadiusX="2" RadiusY="2">
-                        <Rectangle.RenderTransform>
-                            <RotateTransform Angle="45" CenterX="5.5" CenterY="5.5" />
-                        </Rectangle.RenderTransform>
-                    </Rectangle>
-                </Grid>
-                <TextBlock Text="DXO" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <!-- DXO wordmark (Assets\dxo-logo.png, white line art) -->
+                <Image x:Name="TitleLogo" Height="15" Stretch="Uniform" VerticalAlignment="Center" />
                 <TextBlock Text="v0.1" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>

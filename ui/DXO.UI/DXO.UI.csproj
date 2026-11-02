@@ -40,8 +40,8 @@
       <Link>Skins\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="Assets\dxo.ico">
-      <Link>dxo.ico</Link>
+    <None Include="Assets\dxo.ico;Assets\dxo-logo.png">
+      <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\..\profiles\*.toml">

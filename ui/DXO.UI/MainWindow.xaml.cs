@@ -26,6 +26,8 @@ public sealed partial class MainWindow : Window
 
         string icon = System.IO.Path.Combine(AppContext.BaseDirectory, "dxo.ico");
         if (System.IO.File.Exists(icon)) AppWindow.SetIcon(icon);
+        string logo = System.IO.Path.Combine(AppContext.BaseDirectory, "dxo-logo.png");
+        if (System.IO.File.Exists(logo)) TitleLogo.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(logo));
 
         try
         {
