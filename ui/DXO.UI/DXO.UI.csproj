@@ -12,6 +12,9 @@
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Use the MSIX/PRI build tools shipped in NuGet instead of looking for
+         Visual Studio's copy, so plain `dotnet build` works without VS. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -25,7 +28,7 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.*" />
   </ItemGroup>
 
-  <!-- Copy the Rust engine next to the exe. Path matches `cargo build --release`. -->
+  <!-- Copy the Rust engine next to the exe. Path matches `a release cargo build`. -->
   <ItemGroup>
     <None Include="..\..\target\release\dxo_core.dll" Condition="Exists('..\..\target\release\dxo_core.dll')">
       <Link>dxo_core.dll</Link>

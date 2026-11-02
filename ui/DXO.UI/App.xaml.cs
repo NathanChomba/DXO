@@ -18,27 +18,62 @@ public partial class App : Application
     /// Needed by file pickers in unpackaged apps (they need an HWND).
     public Window? MainWindowRef { get; private set; }
 
+    /// %LOCALAPPDATA%\DXO\crash.log - every unhandled error lands here.
+    public static readonly string CrashLog = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DXO", "crash.log");
+
     public App()
     {
-        InitializeComponent();
+        // Hook these BEFORE InitializeComponent so errors in App.xaml are caught too.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash("AppDomain", e.ExceptionObject as Exception);
+        UnhandledException += (_, e) => { LogCrash("XAML", e.Exception); };
+        try
+        {
+            InitializeComponent();
+        }
+        catch (Exception ex)
+        {
+            LogCrash("App.InitializeComponent", ex);
+            throw;
+        }
+    }
+
+    public static void LogCrash(string where, Exception? ex)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CrashLog)!);
+            File.AppendAllText(CrashLog,
+                $"===== {DateTime.Now:yyyy-MM-dd HH:mm:ss} [{where}] =====\n{ex}\n\n");
+        }
+        catch { /* never let logging crash the crash handler */ }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         try
         {
-            var profiles = Path.Combine(AppContext.BaseDirectory, "profiles");
-            Engine = new DxoEngine(Directory.Exists(profiles) ? profiles : null);
-        }
-        catch (Exception ex) when (ex is DllNotFoundException or InvalidOperationException or EntryPointNotFoundException)
-        {
-            StartupError = $"Engine failed to start: {ex.Message}. Run scripts\\build.ps1 first.";
-        }
+            try
+            {
+                var profiles = Path.Combine(AppContext.BaseDirectory, "profiles");
+                Engine = new DxoEngine(Directory.Exists(profiles) ? profiles : null);
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or InvalidOperationException or EntryPointNotFoundException)
+            {
+                StartupError = $"Engine failed to start: {ex.Message}. Run scripts\\build.ps1 first.";
+                LogCrash("Engine", ex);
+            }
 
-        MainWindowRef = new MainWindow();
-        Device = new DeviceViewModel(MainWindowRef.DispatcherQueue);
-        ((MainWindow)MainWindowRef).Start();
-        MainWindowRef.Closed += (_, _) => Engine?.Dispose(); // unhide the pad + unplug the virtual one
-        MainWindowRef.Activate();
+            MainWindowRef = new MainWindow();
+            Device = new DeviceViewModel(MainWindowRef.DispatcherQueue);
+            ((MainWindow)MainWindowRef).Start();
+            MainWindowRef.Closed += (_, _) => Engine?.Dispose(); // unhide the pad + unplug the virtual one
+            MainWindowRef.Activate();
+        }
+        catch (Exception ex)
+        {
+            LogCrash("OnLaunched", ex);
+            throw;
+        }
     }
 }

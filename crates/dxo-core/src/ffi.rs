@@ -81,6 +81,28 @@ pub struct DxoOutput {
     pub trigger_right: DxoTrigger,
 }
 
+/// %LOCALAPPDATA%\DXO\engine.log - panics with file:line, so crashes inside the
+/// UI process are never silent.
+fn install_panic_log() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
+                let dir = PathBuf::from(dir).join("DXO");
+                let _ = std::fs::create_dir_all(&dir);
+                let bt = std::backtrace::Backtrace::force_capture();
+                let line = format!("panic: {info}\n{bt}\n\n");
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("engine.log")) {
+                    let _ = f.write_all(line.as_bytes());
+                }
+            }
+            prev(info);
+        }));
+    });
+}
+
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(fallback)
 }
@@ -104,6 +126,7 @@ pub extern "C" fn dxo_abi_version() -> u32 {
 /// Start the engine. `profiles_dir` may be null. Returns null on failure.
 #[no_mangle]
 pub unsafe extern "C" fn dxo_create(profiles_dir: *const c_char, enable_virtual: u8) -> *mut Engine {
+    install_panic_log();
     guard(std::ptr::null_mut(), || {
         let cfg = EngineConfig {
             profiles_dir: path_arg(profiles_dir),

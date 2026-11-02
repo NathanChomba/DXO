@@ -32,7 +32,11 @@ public sealed partial class TriggersPage : Page, INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(nameof(PanelOpacity)));
     }
 
-    private void Changed(object sender, object e)
+    // Typed handlers: the XAML compiler wants exact event signatures.
+    private void ModeChanged(object sender, SelectionChangedEventArgs e) => Changed();
+    private void SliderChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e) => Changed();
+
+    private void Changed()
     {
         if (!_ready) return; // controls fire events while InitializeComponent runs
         Device.SetTriggers(

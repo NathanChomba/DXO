@@ -24,28 +24,28 @@
                 <Border Style="{StaticResource DxoCard}">
                     <StackPanel Spacing="10">
                         <TextBlock Text="Left trigger (L2)" FontSize="16" FontWeight="SemiBold" />
-                        <RadioButtons x:Name="LeftMode" SelectedIndex="0" SelectionChanged="Changed">
+                        <RadioButtons x:Name="LeftMode" SelectedIndex="0" SelectionChanged="ModeChanged">
                             <RadioButton Content="Off - normal trigger" />
                             <RadioButton Content="Feedback - resists past the start position" />
                             <RadioButton Content="Weapon - snaps like a gun trigger" />
                         </RadioButtons>
-                        <Slider x:Name="LeftStart" Header="Start position" Minimum="0" Maximum="9" Value="3" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
-                        <Slider x:Name="LeftEnd" Header="End position (weapon)" Minimum="2" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
-                        <Slider x:Name="LeftStrength" Header="Strength" Minimum="1" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                        <Slider x:Name="LeftStart" Header="Start position" Minimum="0" Maximum="9" Value="3" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="SliderChanged" />
+                        <Slider x:Name="LeftEnd" Header="End position (weapon)" Minimum="2" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="SliderChanged" />
+                        <Slider x:Name="LeftStrength" Header="Strength" Minimum="1" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="SliderChanged" />
                     </StackPanel>
                 </Border>
 
                 <Border Grid.Column="1" Style="{StaticResource DxoCard}">
                     <StackPanel Spacing="10">
                         <TextBlock Text="Right trigger (R2)" FontSize="16" FontWeight="SemiBold" />
-                        <RadioButtons x:Name="RightMode" SelectedIndex="0" SelectionChanged="Changed">
+                        <RadioButtons x:Name="RightMode" SelectedIndex="0" SelectionChanged="ModeChanged">
                             <RadioButton Content="Off - normal trigger" />
                             <RadioButton Content="Feedback - resists past the start position" />
                             <RadioButton Content="Weapon - snaps like a gun trigger" />
                         </RadioButtons>
-                        <Slider x:Name="RightStart" Header="Start position" Minimum="0" Maximum="9" Value="3" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
-                        <Slider x:Name="RightEnd" Header="End position (weapon)" Minimum="2" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
-                        <Slider x:Name="RightStrength" Header="Strength" Minimum="1" Maximum="8" Value="8" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="Changed" />
+                        <Slider x:Name="RightStart" Header="Start position" Minimum="0" Maximum="9" Value="3" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="SliderChanged" />
+                        <Slider x:Name="RightEnd" Header="End position (weapon)" Minimum="2" Maximum="8" Value="6" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="SliderChanged" />
+                        <Slider x:Name="RightStrength" Header="Strength" Minimum="1" Maximum="8" Value="8" StepFrequency="1" TickFrequency="1" TickPlacement="BottomRight" ValueChanged="SliderChanged" />
                     </StackPanel>
                 </Border>
             </Grid>

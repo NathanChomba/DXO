@@ -26,3 +26,19 @@ pub mod virtual_pad;
 pub use engine::Engine;
 pub use error::{Error, Result};
 pub use state::{Buttons, PadState};
+
+/// Our own DLL entry point. Required on the windows-gnu toolchain: without it,
+/// MinGW's linker resolves the CRT's `DllMain` reference against winapi's XInput
+/// import library (pulled in by vigem-client), so loading dxo_core.dll ran
+/// XInput's DllMain and the host app died with 0xc0000409 in XINPUT1_4.dll.
+/// Does nothing; Rust needs no per-process setup here.
+#[cfg(all(windows, target_env = "gnu"))]
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "system" fn DllMain(
+    _module: *mut core::ffi::c_void,
+    _reason: u32,
+    _reserved: *mut core::ffi::c_void,
+) -> i32 {
+    1 // TRUE: load succeeded
+}

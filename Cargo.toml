@@ -21,4 +21,6 @@ crc32fast = "1"
 [profile.release]
 lto = "thin"
 codegen-units = 1
-panic = "abort"
+# unwind (not abort): the engine runs inside the UI process, so a panic must be
+# caught and reported, never allowed to kill the whole app.
+panic = "unwind"

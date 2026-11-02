@@ -79,7 +79,7 @@ internal static partial class DxoNative
 }
 
 /// Safe, disposable wrapper. One instance for the app's lifetime.
-public sealed class DxoEngine : IDisposable
+public sealed unsafe class DxoEngine : IDisposable
 {
     private IntPtr _h;
 

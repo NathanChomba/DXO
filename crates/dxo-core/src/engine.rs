@@ -76,7 +76,21 @@ impl Engine {
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
             .name("dxo-engine".into())
-            .spawn(move || run(s2, cfg))
+            .spawn(move || {
+                // A panic here must not take the host app down: record it and stop the engine.
+                let s3 = s2.clone();
+                if let Err(p) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(s2, cfg))) {
+                    let msg = p
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| p.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".into());
+                    if let Ok(mut snap) = s3.snapshot.lock() {
+                        snap.connected = false;
+                        snap.last_error = Some(format!("Engine crashed: {msg} (see %LOCALAPPDATA%\\DXO\\engine.log)"));
+                    }
+                }
+            })
             .expect("spawn engine thread");
         Engine { shared, thread: Some(thread) }
     }
