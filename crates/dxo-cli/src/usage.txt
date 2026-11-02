@@ -6,5 +6,6 @@ DXO CLI
   dxo lightbar <r> <g> <b>           M2  set lightbar colour
   dxo rumble <left> <right>          M2  rumble for 1 second
   dxo trigger <off|feedback|weapon>  M2  adaptive trigger test (DualSense)
+  dxo speaker [0-127]                     M6  EXPERIMENT: DS4 built-in speaker (USB)
   dxo run [profiles_dir]             M3+ full engine (virtual pad, HidHide, profiles)
   dxo profile-template [file]        M5  write a default profile TOML

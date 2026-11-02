@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 1;
+pub const DXO_ABI_VERSION: u32 = 2; // 2: virtual-device controls
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -101,6 +101,20 @@ fn install_panic_log() {
             prev(info);
         }));
     });
+}
+
+/// Virtual-device setup and live status for the Virtual Device page.
+/// target: 0 = none (native), 1 = Xbox 360.
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DxoVirtual {
+    pub target: u8,
+    pub hide_physical: u8,
+    pub rumble_passthrough: u8,
+    /// live status, read-only
+    pub pad_hidden: u8,
+    pub virtual_active: u8,
+    pub _pad: [u8; 3],
 }
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
@@ -224,6 +238,46 @@ pub unsafe extern "C" fn dxo_set_output(h: *mut Engine, o: *const DxoOutput) {
     })
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_virtual(h: *mut Engine, out: *mut DxoVirtual) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(out)) = (engine(h), out.as_mut()) else { return 0 };
+        let p = e.profile();
+        let s = e.snapshot();
+        *out = DxoVirtual {
+            target: match p.target {
+                crate::profile::VirtualTarget::None => 0,
+                _ => 1,
+            },
+            hide_physical: p.hide_physical as u8,
+            rumble_passthrough: p.rumble_passthrough as u8,
+            pad_hidden: s.pad_hidden as u8,
+            virtual_active: s.virtual_active as u8,
+            _pad: [0; 3],
+        };
+        1
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_virtual(h: *mut Engine, target: u8, hide_physical: u8, rumble_passthrough: u8) {
+    guard((), || {
+        let Some(e) = engine(h) else { return };
+        let t = if target == 0 { crate::profile::VirtualTarget::None } else { crate::profile::VirtualTarget::Xbox360 };
+        e.set_virtual(t, hide_physical != 0, rumble_passthrough != 0);
+    })
+}
+
+/// Unhide, unplug the virtual pad, reconnect and hide again.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_reconnect(h: *mut Engine) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.request_reconnect();
+        }
+    })
+}
+
 /// Load and activate a profile TOML. Returns 1 on success.
 #[no_mangle]
 pub unsafe extern "C" fn dxo_load_profile(h: *mut Engine, path: *const c_char) -> u8 {
@@ -251,5 +305,6 @@ mod tests {
         // Must match [StructLayout(LayoutKind.Sequential)] in DxoNative.cs
         assert_eq!(std::mem::size_of::<DxoState>(), 64);
         assert_eq!(std::mem::size_of::<DxoOutput>(), 16);
+        assert_eq!(std::mem::size_of::<DxoVirtual>(), 8);
     }
 }

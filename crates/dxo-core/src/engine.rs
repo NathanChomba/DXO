@@ -34,6 +34,10 @@ pub struct Snapshot {
     pub profile_name: String,
     pub last_error: Option<String>,
     pub reports_per_sec: u32,
+    /// HidHide is currently hiding the physical pad from other apps.
+    pub pad_hidden: bool,
+    /// A virtual controller is plugged in for games.
+    pub virtual_active: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +61,8 @@ struct Shared {
     output_override: Mutex<Option<OutputState>>,
     profile: Mutex<Profile>,
     profile_dirty: AtomicBool,
+    /// UI asked for a fresh connect (e.g. "Fix double input").
+    reconnect: AtomicBool,
 }
 
 pub struct Engine {
@@ -72,6 +78,7 @@ impl Engine {
             output_override: Mutex::new(None),
             profile: Mutex::new(Profile::default()),
             profile_dirty: AtomicBool::new(true),
+            reconnect: AtomicBool::new(false),
         });
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
@@ -108,6 +115,23 @@ impl Engine {
         self.shared.profile.lock().unwrap().clone()
     }
 
+    /// Change how games see the pad. Takes effect immediately: if the target or
+    /// hiding changed, the engine reconnects with the new setup.
+    pub fn set_virtual(&self, target: VirtualTarget, hide_physical: bool, rumble_passthrough: bool) {
+        let mut p = self.shared.profile.lock().unwrap();
+        p.target = target;
+        p.hide_physical = hide_physical;
+        p.rumble_passthrough = rumble_passthrough;
+        drop(p);
+        self.shared.profile_dirty.store(true, Ordering::Release);
+    }
+
+    /// Drop and rebuild the connection: unhide, unplug the virtual pad, then
+    /// reconnect and hide again. Fixes apps that still see the real pad.
+    pub fn request_reconnect(&self) {
+        self.shared.reconnect.store(true, Ordering::Release);
+    }
+
     /// Override output (lightbar/triggers/rumble) from the UI; None = use profile.
     pub fn set_output_override(&self, o: Option<OutputState>) {
         *self.shared.output_override.lock().unwrap() = o;
@@ -130,6 +154,10 @@ impl Drop for Engine {
 struct Live {
     dev: Device,
     vpad: Box<dyn VirtualPad>,
+    /// The setup this connection was built with; a profile change to either
+    /// means rebuilding the connection.
+    target: VirtualTarget,
+    hide_requested: bool,
     game_rumble: virtual_pad::Rumble,
     hidden_instance: Option<String>,
     last_output: Option<OutputState>,
@@ -138,6 +166,15 @@ struct Live {
 }
 
 fn run(sh: Arc<Shared>, cfg: EngineConfig) {
+    // Two engines on one pad = flickering lightbar, two virtual pads, hide/unhide fights.
+    let _lock = match crate::sysdev::SingleInstance::acquire() {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("{e}");
+            sh.snapshot.lock().unwrap().last_error = Some(e.to_string());
+            return;
+        }
+    };
     let mut api = match HidApi::new() {
         Ok(a) => a,
         Err(e) => {
@@ -172,6 +209,9 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
     let cal = Calibration::default();
 
     let mut live: Option<Live> = None;
+    // Device we already restarted after hiding it, so its own reconnect
+    // doesn't trigger another restart (that would loop forever).
+    let mut cycled: Option<(String, Instant)> = None;
     let mut last_scan = Instant::now() - Duration::from_secs(10);
     let mut rate_count = 0u32;
     let mut rate_t = Instant::now();
@@ -187,11 +227,29 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             let _ = api.refresh_devices();
             match connect(&api, &cfg, &sh, hidhide.as_ref()) {
                 Ok(l) => {
+                    // Freshly hidden? Restart the device so apps that had it open
+                    // (browsers, Steam, games) lose it. Our own handle closes first.
+                    if let Some(id) = l.hidden_instance.clone() {
+                        let recent = matches!(&cycled, Some((c, t)) if *c == id && t.elapsed() < Duration::from_secs(30));
+                        if !recent {
+                            cycled = Some((id.clone(), Instant::now()));
+                            drop(l); // close HID handle + unplug virtual pad, but stay hidden
+                            match crate::sysdev::restart_device(&id) {
+                                Ok(()) => log::info!("restarted {id} so other apps re-enumerate it hidden"),
+                                Err(e) => log::warn!("device restart skipped: {e}"),
+                            }
+                            last_scan = Instant::now() - Duration::from_secs(10);
+                            std::thread::sleep(Duration::from_millis(800)); // let it come back
+                            continue;
+                        }
+                    }
                     let mut snap = sh.snapshot.lock().unwrap();
                     snap.connected = true;
                     snap.kind = Some(l.dev.info.kind);
                     snap.product = l.dev.info.product.clone();
                     snap.last_error = None;
+                    snap.pad_hidden = l.hidden_instance.is_some();
+                    snap.virtual_active = l.target != VirtualTarget::None && cfg.enable_virtual;
                     live = Some(l);
                 }
                 Err(e) => {
@@ -222,6 +280,25 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             };
         }
 
+        // ---- rebuild the connection when the virtual setup changed ------------
+        let setup_changed = profile.target != l.target || profile.hide_physical != l.hide_requested;
+        let asked = sh.reconnect.swap(false, Ordering::AcqRel);
+        if asked {
+            cycled = None; // "Fix double input": restart the device again on reconnect
+        }
+        if setup_changed || asked {
+            log::info!("reconnecting (target {:?}, hide {})", profile.target, profile.hide_physical);
+            disconnect(live.take().unwrap(), hidhide.as_ref());
+            {
+                let mut snap = sh.snapshot.lock().unwrap();
+                snap.pad_hidden = false;
+                snap.virtual_active = false;
+            }
+            last_scan = Instant::now() - Duration::from_secs(10); // reconnect right away
+            std::thread::sleep(Duration::from_millis(300)); // let Windows settle the unplug
+            continue;
+        }
+
         // ---- input (M1) -------------------------------------------------------
         match l.dev.poll(4) {
             Ok(Some(raw)) => {
@@ -249,6 +326,8 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
                 disconnect(live.take().unwrap(), hidhide.as_ref());
                 let mut snap = sh.snapshot.lock().unwrap();
                 snap.connected = false;
+                snap.pad_hidden = false;
+                snap.virtual_active = false;
                 snap.last_error = Some(e.to_string());
                 continue;
             }
@@ -266,6 +345,9 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         // rather than applying it only on the frame it arrives.
         if let Some(r) = l.vpad.poll_rumble() {
             l.game_rumble = r;
+        }
+        if !profile.rumble_passthrough {
+            l.game_rumble = Default::default();
         }
         out.rumble_left = out.rumble_left.max(l.game_rumble.large);
         out.rumble_right = out.rumble_right.max(l.game_rumble.small);
@@ -316,6 +398,8 @@ fn connect(api: &HidApi, cfg: &EngineConfig, sh: &Shared, hh: Option<&HidHide>) 
     Ok(Live {
         dev,
         vpad,
+        target: profile.target,
+        hide_requested: profile.hide_physical,
         hidden_instance,
         last_output: None,
         last_output_sent: Instant::now(),

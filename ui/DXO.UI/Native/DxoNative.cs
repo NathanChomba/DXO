@@ -47,6 +47,18 @@ public struct DxoOutput
     public DxoTrigger TriggerRight;
 }
 
+/// Virtual-device setup + live status (ffi.rs DxoVirtual, 8 bytes).
+[StructLayout(LayoutKind.Sequential)]
+public struct DxoVirtual
+{
+    public byte Target;            // 0 none (native), 1 Xbox 360
+    public byte HidePhysical;
+    public byte RumblePassthrough;
+    public byte PadHidden;         // live: HidHide is hiding the real pad
+    public byte VirtualActive;     // live: a virtual pad is plugged in
+    private byte _p0, _p1, _p2;
+}
+
 /// Bit positions of PadState.buttons (state.rs `Buttons`).
 [Flags]
 public enum DxoButtons : uint
@@ -61,7 +73,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 1;
+    public const uint ExpectedAbi = 2;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -76,6 +88,10 @@ internal static partial class DxoNative
 
     [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
     public static partial byte dxo_load_profile(IntPtr engine, string path);
+
+    [LibraryImport(Dll)] public static partial byte dxo_get_virtual(IntPtr engine, out DxoVirtual v);
+    [LibraryImport(Dll)] public static partial void dxo_set_virtual(IntPtr engine, byte target, byte hidePhysical, byte rumblePassthrough);
+    [LibraryImport(Dll)] public static partial void dxo_reconnect(IntPtr engine);
 }
 
 /// Safe, disposable wrapper. One instance for the app's lifetime.
@@ -126,6 +142,17 @@ public sealed unsafe class DxoEngine : IDisposable
     }
 
     public bool LoadProfile(string path) => DxoNative.dxo_load_profile(_h, path) != 0;
+
+    public DxoVirtual GetVirtual()
+    {
+        DxoNative.dxo_get_virtual(_h, out var v);
+        return v;
+    }
+
+    public void SetVirtual(bool xbox360, bool hidePhysical, bool rumblePassthrough) =>
+        DxoNative.dxo_set_virtual(_h, (byte)(xbox360 ? 1 : 0), (byte)(hidePhysical ? 1 : 0), (byte)(rumblePassthrough ? 1 : 0));
+
+    public void Reconnect() => DxoNative.dxo_reconnect(_h);
 
     public void Dispose()
     {

@@ -38,6 +38,11 @@ public partial class DeviceViewModel : ObservableObject
     [ObservableProperty] private string _pressed = "";
     [ObservableProperty] private string _gyro = "";
 
+    /// Raw state for the controller visualizer; raised every refresh (~30 Hz).
+    public event Action<DxoState>? StateUpdated;
+    /// Engine device kind (1 DS4, 2 DualSense, 3 Edge, 4 generic) for picking a skin.
+    public byte Kind { get; private set; }
+
     public DeviceViewModel(DispatcherQueue dq)
     {
         _timer = dq.CreateTimer();
@@ -87,6 +92,8 @@ public partial class DeviceViewModel : ObservableObject
         R2 = s.R2 * 100;
         Pressed = s.Buttons == 0 ? "-" : ((DxoButtons)s.Buttons).ToString();
         Gyro = $"{s.GyroX,6} {s.GyroY,6} {s.GyroZ,6}";
+        Kind = s.Kind;
+        StateUpdated?.Invoke(s);
     }
 
     // ---- output: one place that builds DxoOutput so pages don't fight ----

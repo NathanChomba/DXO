@@ -86,6 +86,8 @@ pub struct Profile {
     pub lightbar: [u8; 3],
     pub player_leds: u8,
     pub hide_physical: bool,
+    /// Play vibration that games send to the virtual pad on the real controller.
+    pub rumble_passthrough: bool,
     pub gyro: GyroConfig,
     /// Disconnect a Bluetooth pad after this many idle minutes (0 = never). M6.
     pub idle_disconnect_min: u32,
@@ -104,6 +106,7 @@ impl Default for Profile {
             lightbar: [0, 64, 255],
             player_leds: 0b00100,
             hide_physical: true,
+            rumble_passthrough: true,
             gyro: GyroConfig::default(),
             idle_disconnect_min: 15,
         }

@@ -24,10 +24,24 @@ public sealed partial class MyControllerPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         Device.PropertyChanged += OnDeviceChanged;
+        Device.StateUpdated += OnState;
+        Visualizer.LoadSkin(Controls.ControllerVisualizer.SkinFor(Device.Kind));
         BuildFeatures();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e) => Device.PropertyChanged -= OnDeviceChanged;
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        Device.PropertyChanged -= OnDeviceChanged;
+        Device.StateUpdated -= OnState;
+    }
+
+    private void OnState(Native.DxoState s)
+    {
+        Visualizer.LoadSkin(Controls.ControllerVisualizer.SkinFor(s.Kind)); // no-op unless the pad changed
+        Visualizer.Update(s.Buttons, s.LX, s.LY, s.RX, s.RY);
+        L2Arc.SetValue(s.L2);
+        R2Arc.SetValue(s.R2);
+    }
 
     private void OnDeviceChanged(object? s, PropertyChangedEventArgs e)
     {

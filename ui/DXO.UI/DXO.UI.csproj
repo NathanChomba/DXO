@@ -34,6 +34,11 @@
       <Link>dxo_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Controller skins: line-art PNG + optional JSON hit-zones, copied to Skins\ -->
+    <None Include="Assets\Skins\*.png;Assets\Skins\*.json">
+      <Link>Skins\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\..\profiles\*.toml">
       <Link>profiles\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

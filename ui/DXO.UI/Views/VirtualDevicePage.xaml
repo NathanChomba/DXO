@@ -8,53 +8,68 @@
     <ScrollViewer>
         <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4" MaxWidth="1200">
             <TextBlock Text="Virtual Device" Style="{StaticResource DxoPageTitle}" />
-            <TextBlock Text="The controller games and Windows see instead of your physical one." Style="{StaticResource DxoCaption}" Margin="0,0,0,12" />
+            <TextBlock Text="The controller games and Windows see instead of your physical one. Changes apply straight away." Style="{StaticResource DxoCaption}" Margin="0,0,0,12" />
 
-            <!-- Two-pane layout: modes on the left, options for the selected mode on the right -->
+            <!-- Live status -->
+            <Border Style="{StaticResource DxoCard}" Margin="0,0,0,8">
+                <Grid ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Ellipse x:Name="VirtualDot" Width="8" Height="8" VerticalAlignment="Center" />
+                        <TextBlock x:Name="VirtualText" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Ellipse x:Name="HiddenDot" Width="8" Height="8" VerticalAlignment="Center" />
+                        <TextBlock x:Name="HiddenText" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Two-pane layout: modes on the left, options on the right -->
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" MinWidth="320" />
                     <ColumnDefinition Width="*" MinWidth="320" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ===== Left: emulation mode ===== -->
                 <StackPanel Spacing="4">
                     <TextBlock Text="Emulation mode" Style="{StaticResource DxoSectionTitle}" Margin="0,0,0,6" />
-                    <RadioButtons x:Name="Mode" SelectedIndex="1" SelectionChanged="Mode_SelectionChanged">
-                        <RadioButton Content="Native mode - no virtual controller, games read your pad directly" />
-                        <RadioButton Content="Xbox 360 controller - works with almost every PC game" />
-                        <RadioButton Content="DualShock 4 - keeps PlayStation button prompts (coming later)" IsEnabled="False" />
-                        <RadioButton Content="DualSense - native adaptive triggers in supported games (research)" IsEnabled="False" />
+                    <RadioButtons x:Name="Mode" SelectionChanged="Mode_SelectionChanged">
+                        <RadioButton Content="Native mode: no virtual controller, games read your pad directly" />
+                        <RadioButton Content="Xbox 360 controller: works with almost every PC game" />
+                        <RadioButton Content="DualShock 4: keeps PlayStation button prompts (coming later)" IsEnabled="False" />
+                        <RadioButton Content="DualSense: native adaptive triggers in supported games (research)" IsEnabled="False" />
                     </RadioButtons>
-                    <TextBlock x:Name="ModeNote" Style="{StaticResource DxoCaption}" Margin="0,8,0,0"
-                               Text="Changing mode reconnects the virtual controller." />
+                    <TextBlock x:Name="ModeNote" Style="{StaticResource DxoCaption}" Margin="0,8,0,0" />
                 </StackPanel>
 
-                <!-- ===== Right: options ===== -->
                 <StackPanel Grid.Column="1" Spacing="4">
                     <TextBlock Text="Options" Style="{StaticResource DxoSectionTitle}" Margin="0,0,0,6" />
 
                     <controls:SettingsCard Header="Hide physical controller"
                                            Description="Uses HidHide so games only see the virtual controller and you don't get double input.">
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xED1A;" /></controls:SettingsCard.HeaderIcon>
-                        <ToggleSwitch IsOn="True" IsEnabled="False" />
+                        <ToggleSwitch x:Name="HideToggle" Toggled="Option_Toggled" />
                     </controls:SettingsCard>
 
                     <controls:SettingsCard Header="Rumble passthrough"
                                            Description="Vibration a game sends to the virtual controller is played on your real one.">
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE995;" /></controls:SettingsCard.HeaderIcon>
-                        <ToggleSwitch IsOn="True" IsEnabled="False" />
+                        <ToggleSwitch x:Name="RumbleToggle" Toggled="Option_Toggled" />
                     </controls:SettingsCard>
 
                     <controls:SettingsCard Header="Fix double input"
-                                           Description="Re-hides your controller if a game still sees two. The pad may reconnect for a few seconds.">
+                                           Description="Unhides, reconnects and hides your controller again. Use it if a game still sees two controllers. The pad drops out for a second.">
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7BA;" Foreground="{StaticResource DxoWarning}" /></controls:SettingsCard.HeaderIcon>
-                        <Button Content="Fix now" IsEnabled="False" />
+                        <Button x:Name="FixButton" Content="Fix now" Click="Fix_Click" />
                     </controls:SettingsCard>
 
-                    <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Margin="0,8,0,0"
-                             Title="Read-only for now"
-                             Message="These come from your profile (hide_physical, target). Engine controls for them arrive with milestone 3; until then edit profiles\default.toml." />
+                    <TextBlock Style="{StaticResource DxoCaption}" Margin="0,8,0,0"
+                               Text="These settings belong to the active profile. Save the profile on the Profiles page to keep them after a restart." />
                 </StackPanel>
             </Grid>
         </StackPanel>

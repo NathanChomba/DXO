@@ -1,0 +1,24 @@
+{
+  "name": "DualShock 4",
+  "image": "ds4.png",
+  "width": 1600,
+  "height": 1043,
+  "controls": {
+    "dpad_up":    { "shape": "rect",   "x": 327,  "y": 250, "w": 80,  "h": 104, "r": 14 },
+    "dpad_down":  { "shape": "rect",   "x": 327,  "y": 397, "w": 80,  "h": 104, "r": 14 },
+    "dpad_left":  { "shape": "rect",   "x": 252,  "y": 324, "w": 104, "h": 82,  "r": 14 },
+    "dpad_right": { "shape": "rect",   "x": 400,  "y": 324, "w": 104, "h": 82,  "r": 14 },
+    "btn_north":  { "shape": "circle", "x": 1275, "y": 213, "r": 52 },
+    "btn_west":   { "shape": "circle", "x": 1165, "y": 323, "r": 52 },
+    "btn_east":   { "shape": "circle", "x": 1385, "y": 323, "r": 52 },
+    "btn_south":  { "shape": "circle", "x": 1275, "y": 433, "r": 52 },
+    "btn_select": { "shape": "rect",   "x": 490,  "y": 169, "w": 46,  "h": 86,  "r": 23 },
+    "btn_start":  { "shape": "rect",   "x": 1110, "y": 169, "w": 46,  "h": 86,  "r": 23 },
+    "touchpad":   { "shape": "rect",   "x": 801,  "y": 233, "w": 500, "h": 296, "r": 22 },
+    "btn_home":   { "shape": "circle", "x": 801,  "y": 540, "r": 41 },
+    "shoulder_l": { "shape": "rect",   "x": 330,  "y": 59,  "w": 186, "h": 40,  "r": 18 },
+    "shoulder_r": { "shape": "rect",   "x": 1270, "y": 59,  "w": 186, "h": 40,  "r": 18 },
+    "stick_l":    { "shape": "stick",  "x": 558,  "y": 532, "r": 59,  "travel": 46 },
+    "stick_r":    { "shape": "stick",  "x": 1044, "y": 532, "r": 59,  "travel": 46 }
+  }
+}

@@ -31,6 +31,7 @@ fn main() {
         Some("lightbar") => cmd_lightbar(&args[1..]),
         Some("rumble") => cmd_rumble(&args[1..]),
         Some("trigger") => cmd_trigger(&args[1..]),
+        Some("speaker") => cmd_speaker(&args[1..]),
         Some("run") => cmd_run(args.get(1).map(PathBuf::from)),
         Some("profile-template") => cmd_template(args.get(1)),
         _ => {
@@ -180,6 +181,33 @@ fn cmd_trigger(a: &[String]) -> R {
     drop(dev);
     send_output(&OutputState { trigger_right: effect, trigger_left: effect, ..Default::default() })?;
     println!("Applied {effect:?}. Press R2/L2 to feel it.");
+    Ok(())
+}
+
+/// EXPERIMENT: route USB audio to the DS4's built-in speaker.
+/// DS4 USB output report 0x05 has volume fields (psdevwiki layout):
+///   byte 1 flags: 0x10 left vol, 0x20 right vol, 0x40 mic vol, 0x80 speaker vol
+///   byte 19 left headphone, 20 right headphone, 21 mic, 22 speaker
+/// Windows plays to the "Headset Earphone (Wireless Controller)" device; with
+/// nothing in the 3.5 mm jack and speaker volume up, the pad may send it to
+/// the speaker. Unverified on hardware - that's what this command tests.
+fn cmd_speaker(a: &[String]) -> R {
+    let vol = parse_u8(a, 0).unwrap_or(80).min(0x7F); // observed range 0..=0x7F
+    let api = HidApi::new()?;
+    let dev = device::open_first(&api, false)?;
+    if dev.info.kind != Kind::DualShock4 || dev.info.transport != dxo_core::state::Transport::Usb {
+        return Err("speaker test needs a DualShock 4 on USB".into());
+    }
+    let mut r = vec![0u8; 32];
+    r[0] = 0x05;
+    r[1] = 0xF0; // all four volume fields valid; lightbar/rumble untouched
+    r[19] = vol; // left headphone
+    r[20] = vol; // right headphone
+    r[21] = 0x40; // mic
+    r[22] = vol; // speaker
+    dev.write(&r)?;
+    println!("Sent volume {vol} (speaker + headphones). Unplug anything from the 3.5 mm jack,");
+    println!("set Windows output to 'Headset Earphone (Wireless Controller)' and play audio.");
     Ok(())
 }
 
