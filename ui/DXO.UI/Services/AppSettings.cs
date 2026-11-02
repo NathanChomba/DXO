@@ -14,6 +14,8 @@ public sealed class AppSettings
 {
     public bool CloseToTray { get; set; } = true;
     public bool MinimizeToTray { get; set; }
+    /// Also use Switch Pro and generic USB/Bluetooth gamepads (experimental).
+    public bool IncludeGeneric { get; set; }
     /// The "DXO is still running" tray balloon has been shown once.
     public bool TrayHintShown { get; set; }
 

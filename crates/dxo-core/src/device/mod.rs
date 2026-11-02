@@ -3,6 +3,7 @@
 pub mod ds4;
 pub mod dualsense;
 pub mod generic; // M6
+pub mod switch; // M6, experimental
 
 use crate::error::{Error, Result};
 use crate::state::{PadState, Transport};
@@ -19,6 +20,7 @@ pub enum Kind {
     DualShock4,
     DualSense,
     DualSenseEdge,
+    SwitchPro,
     Generic,
 }
 
@@ -28,6 +30,7 @@ impl Kind {
             (SONY_VID, PID_DS4_V1 | PID_DS4_V2) => Some(Kind::DualShock4),
             (SONY_VID, PID_DUALSENSE) => Some(Kind::DualSense),
             (SONY_VID, PID_DUALSENSE_EDGE) => Some(Kind::DualSenseEdge),
+            (switch::VID, switch::PID_PRO) => Some(Kind::SwitchPro),
             _ => None,
         }
     }
@@ -97,6 +100,7 @@ pub struct Device {
 enum Parser {
     DualSense,
     Ds4,
+    Switch,
     Generic(generic::Blueprint),
 }
 
@@ -124,6 +128,10 @@ impl Device {
                 cal[0] = 0x05;
                 let _ = hid.get_feature_report(&mut cal);
                 Parser::Ds4
+            }
+            Kind::SwitchPro => {
+                switch::init(&hid, info.transport == Transport::Usb);
+                Parser::Switch
             }
             Kind::Generic => {
                 let mut desc = vec![0u8; 4096];
@@ -156,6 +164,10 @@ impl Device {
         let mut st = match &self.parser {
             Parser::DualSense => dualsense::parse_input(report)?,
             Parser::Ds4 => ds4::parse_input(report)?,
+            Parser::Switch => match switch::parse_input(report) {
+                Some(s) => s,
+                None => return Ok(None), // handshake ack / subcommand reply
+            },
             Parser::Generic(bp) => bp.parse(report)?,
         };
         self.seq += 1;
@@ -177,6 +189,19 @@ impl Device {
 
 /// Open the first supported controller.
 pub fn open_first(api: &HidApi, include_generic: bool) -> Result<Device> {
-    let found = enumerate(api, include_generic).into_iter().next().ok_or(Error::NoDevice)?;
+    open_first_except(api, include_generic, &Default::default())
+}
+
+/// Open the first supported controller whose path isn't in `skip` (DXO's own
+/// virtual DualShock 4 looks exactly like a real one).
+pub fn open_first_except(
+    api: &HidApi,
+    include_generic: bool,
+    skip: &std::collections::HashSet<std::ffi::CString>,
+) -> Result<Device> {
+    let found = enumerate(api, include_generic)
+        .into_iter()
+        .find(|f| !skip.contains(&f.path))
+        .ok_or(Error::NoDevice)?;
     Device::open(api, found)
 }

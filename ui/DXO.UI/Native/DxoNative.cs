@@ -51,7 +51,7 @@ public struct DxoOutput
 [StructLayout(LayoutKind.Sequential)]
 public struct DxoVirtual
 {
-    public byte Target;            // 0 none (native), 1 Xbox 360
+    public byte Target;            // 0 none (native), 1 Xbox 360, 2 DualShock 4
     public byte HidePhysical;
     public byte RumblePassthrough;
     public byte PadHidden;         // live: HidHide is hiding the real pad
@@ -99,7 +99,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 5;
+    public const uint ExpectedAbi = 6;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -118,6 +118,7 @@ internal static partial class DxoNative
     [LibraryImport(Dll)] public static partial byte dxo_get_virtual(IntPtr engine, out DxoVirtual v);
     [LibraryImport(Dll)] public static partial void dxo_set_virtual(IntPtr engine, byte target, byte hidePhysical, byte rumblePassthrough);
     [LibraryImport(Dll)] public static partial void dxo_reconnect(IntPtr engine);
+    [LibraryImport(Dll)] public static partial void dxo_set_include_generic(IntPtr engine, byte on);
 
     // ---- profile editor (ABI 3) ----
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_active_profile_json(IntPtr engine, byte* buf, nuint len);
@@ -193,8 +194,12 @@ public sealed unsafe class DxoEngine : IDisposable
         return v;
     }
 
-    public void SetVirtual(bool xbox360, bool hidePhysical, bool rumblePassthrough) =>
-        DxoNative.dxo_set_virtual(_h, (byte)(xbox360 ? 1 : 0), (byte)(hidePhysical ? 1 : 0), (byte)(rumblePassthrough ? 1 : 0));
+    /// target: 0 none (native), 1 Xbox 360, 2 DualShock 4
+    public void SetVirtual(byte target, bool hidePhysical, bool rumblePassthrough) =>
+        DxoNative.dxo_set_virtual(_h, target, (byte)(hidePhysical ? 1 : 0), (byte)(rumblePassthrough ? 1 : 0));
+
+    /// Also use Switch Pro / generic gamepads (next connect).
+    public void SetIncludeGeneric(bool on) => DxoNative.dxo_set_include_generic(_h, (byte)(on ? 1 : 0));
 
     public void Reconnect() => DxoNative.dxo_reconnect(_h);
 

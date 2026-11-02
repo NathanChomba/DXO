@@ -114,7 +114,7 @@ public sealed partial class ProfilesPage : Page
         var c = ColorHelper.FromArgb(255, (byte)m.Lightbar[0], (byte)m.Lightbar[1], (byte)m.Lightbar[2]);
         LightPicker.Color = c;
         ColorSwatch.Background = new SolidColorBrush(c);
-        TargetBox.SelectedIndex = m.Target == "none" ? 1 : 0;
+        TargetBox.SelectedIndex = m.Target switch { "none" => 1, "dual_shock4" => 2, _ => 0 };
         HideToggle.IsOn = m.HidePhysical;
         RumbleToggle.IsOn = m.RumblePassthrough;
         _loading = false;
@@ -159,7 +159,7 @@ public sealed partial class ProfilesPage : Page
         m.TriggerDeadzone = (float)TrigDead.Value;
         var c = LightPicker.Color;
         m.Lightbar = new[] { (int)c.R, c.G, c.B };
-        m.Target = TargetBox.SelectedIndex == 1 ? "none" : "xbox360";
+        m.Target = TargetBox.SelectedIndex switch { 1 => "none", 2 => "dual_shock4", _ => "xbox360" };
         m.HidePhysical = HideToggle.IsOn;
         m.RumblePassthrough = RumbleToggle.IsOn;
         return m;

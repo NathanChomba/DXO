@@ -1,0 +1,24 @@
+{
+  "name": "DualSense",
+  "image": "dualsense.png",
+  "width": 1600,
+  "height": 1101,
+  "controls": {
+    "dpad_up":    { "shape": "rect",   "x": 322,  "y": 245, "w": 84,  "h": 108, "r": 16 },
+    "dpad_down":  { "shape": "rect",   "x": 322,  "y": 398, "w": 84,  "h": 108, "r": 16 },
+    "dpad_left":  { "shape": "rect",   "x": 248,  "y": 322, "w": 108, "h": 84,  "r": 16 },
+    "dpad_right": { "shape": "rect",   "x": 397,  "y": 322, "w": 108, "h": 84,  "r": 16 },
+    "btn_north":  { "shape": "circle", "x": 1272, "y": 212, "r": 50 },
+    "btn_west":   { "shape": "circle", "x": 1165, "y": 321, "r": 50 },
+    "btn_east":   { "shape": "circle", "x": 1379, "y": 321, "r": 50 },
+    "btn_south":  { "shape": "circle", "x": 1272, "y": 430, "r": 50 },
+    "btn_select": { "shape": "rect",   "x": 445,  "y": 157, "w": 40,  "h": 70,  "r": 20 },
+    "btn_start":  { "shape": "rect",   "x": 1157, "y": 157, "w": 40,  "h": 70,  "r": 20 },
+    "touchpad":   { "shape": "rect",   "x": 800,  "y": 218, "w": 560, "h": 318, "r": 30 },
+    "btn_home":   { "shape": "rect",   "x": 800,  "y": 620, "w": 92,  "h": 28,  "r": 14 },
+    "shoulder_l": { "shape": "rect",   "x": 322,  "y": 72,  "w": 196, "h": 44,  "r": 18 },
+    "shoulder_r": { "shape": "rect",   "x": 1278, "y": 72,  "w": 196, "h": 44,  "r": 18 },
+    "stick_l":    { "shape": "stick",  "x": 556,  "y": 532, "r": 62,  "travel": 48 },
+    "stick_r":    { "shape": "stick",  "x": 1045, "y": 532, "r": 62,  "travel": 48 }
+  }
+}

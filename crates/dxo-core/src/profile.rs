@@ -109,6 +109,14 @@ pub struct Profile {
     pub hide_physical: bool,
     /// Play vibration that games send to the virtual pad on the real controller.
     pub rumble_passthrough: bool,
+    /// Multiplier on game rumble: 0.0 = off, 1.0 = as sent, up to 2.0 = boosted.
+    pub rumble_strength: f32,
+    /// Swap the heavy (left) and light (right) motors.
+    pub rumble_swap: bool,
+    /// Send sound to the controller's own speaker / headset jack (USB only).
+    pub controller_audio: bool,
+    /// Controller speaker + headset volume, 0..=100.
+    pub audio_volume: u8,
     pub gyro: GyroConfig,
     /// Disconnect a Bluetooth pad after this many idle minutes (0 = never). M6.
     pub idle_disconnect_min: u32,
@@ -129,6 +137,10 @@ impl Default for Profile {
             player_leds: 0b00100,
             hide_physical: true,
             rumble_passthrough: true,
+            rumble_strength: 1.0,
+            rumble_swap: false,
+            controller_audio: false,
+            audio_volume: 70,
             gyro: GyroConfig::default(),
             idle_disconnect_min: 15,
         }

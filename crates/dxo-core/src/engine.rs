@@ -12,7 +12,8 @@ use crate::error::Result;
 use crate::foreground::Watcher;
 use crate::bindings::{self, Runner};
 use crate::gyro::{CalState, Calibrator, CemuHookServer, GyroMouse};
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
+use std::ffi::CString;
 use crate::hidhide::{self, HidHide};
 use crate::mapping;
 use crate::output::{self, OutputState, TriggerEffect};
@@ -104,6 +105,8 @@ struct Shared {
     fatal: AtomicBool,
     /// UI asked for a manual gyro calibration.
     calibrate_gyro: AtomicBool,
+    /// Also look for non-Sony gamepads (Settings > Other controllers).
+    include_generic: AtomicBool,
     diag: Mutex<Diag>,
 }
 
@@ -124,6 +127,7 @@ impl Engine {
             reload_profiles: AtomicBool::new(false),
             fatal: AtomicBool::new(false),
             calibrate_gyro: AtomicBool::new(false),
+            include_generic: AtomicBool::new(cfg.include_generic),
             diag: Mutex::new(Diag::default()),
         });
         let s2 = shared.clone();
@@ -183,6 +187,11 @@ impl Engine {
         self.shared.reload_profiles.store(true, Ordering::Release);
     }
 
+    /// Look for other gamepads too (generic HID / Switch Pro). Applies at the next connect.
+    pub fn set_include_generic(&self, on: bool) {
+        self.shared.include_generic.store(on, Ordering::Release);
+    }
+
     pub fn diag(&self) -> Diag {
         self.shared.diag.lock().unwrap().clone()
     }
@@ -225,6 +234,8 @@ struct Live {
     hide_requested: bool,
     game_rumble: virtual_pad::Rumble,
     hidden_instance: Option<String>,
+    /// Controller paths that existed before our virtual pad was plugged in.
+    pre_paths: HashSet<CString>,
     last_output: Option<OutputState>,
     last_output_sent: Instant,
     bt_seq: u8,
@@ -278,6 +289,11 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
     let mut calib = Calibrator::default();
     let mut gyro_mouse = GyroMouse::default();
     let mut runner = Runner::default();
+    // DXO's own virtual DualShock 4 looks exactly like a real one: remember its
+    // paths so we never open it as "the controller" (that would loop forever).
+    let mut own_virtual: HashSet<CString> = HashSet::new();
+    let mut learn_until: Option<Instant> = None;
+    let mut last_learn = Instant::now();
     let mut last_report_at: Option<Instant> = None;
 
     let mut live: Option<Live> = None;
@@ -297,7 +313,7 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             }
             last_scan = Instant::now();
             let _ = api.refresh_devices();
-            match connect(&api, &cfg, &sh, hidhide.as_ref()) {
+            match connect(&api, &cfg, &sh, hidhide.as_ref(), &own_virtual) {
                 Ok(l) => {
                     // Freshly hidden? Restart the device so apps that had it open
                     // (browsers, Steam, games) lose it. Our own handle closes first.
@@ -322,6 +338,9 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
                     snap.last_error = None;
                     snap.pad_hidden = l.hidden_instance.is_some();
                     snap.virtual_active = l.target != VirtualTarget::None && cfg.enable_virtual;
+                    if l.target == VirtualTarget::DualShock4 {
+                        learn_until = Some(Instant::now() + Duration::from_secs(4));
+                    }
                     calib.reset(); // a different pad drifts differently
                     gyro_mouse = GyroMouse::default();
                     *sh.diag.lock().unwrap() = Diag::default();
@@ -335,6 +354,21 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             }
         }
         let l = live.as_mut().unwrap();
+
+        // Spot our virtual DS4 appearing (Windows takes a moment to enumerate it).
+        if let Some(until) = learn_until {
+            if Instant::now() > until {
+                learn_until = None;
+            } else if last_learn.elapsed() > Duration::from_millis(400) {
+                last_learn = Instant::now();
+                let _ = api.refresh_devices();
+                for f in device::enumerate(&api, true) {
+                    if f.path != l.dev.info.path && !l.pre_paths.contains(&f.path) && own_virtual.insert(f.path.clone()) {
+                        log::info!("ignoring DXO's own virtual pad: {}", f.path.to_string_lossy());
+                    }
+                }
+            }
+        }
 
         // ---- profile switching (M5) ------------------------------------------
         if sh.reload_profiles.swap(false, Ordering::AcqRel) {
@@ -478,8 +512,15 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         if !profile.rumble_passthrough {
             l.game_rumble = Default::default();
         }
-        out.rumble_left = out.rumble_left.max(l.game_rumble.large);
-        out.rumble_right = out.rumble_right.max(l.game_rumble.small);
+        let k = profile.rumble_strength.clamp(0.0, 2.0);
+        let scaled = |v: u8| (v as f32 * k).round().min(255.0) as u8;
+        let (mut big, mut small) = (scaled(l.game_rumble.large), scaled(l.game_rumble.small));
+        if profile.rumble_swap {
+            std::mem::swap(&mut big, &mut small);
+        }
+        out.rumble_left = out.rumble_left.max(big);
+        out.rumble_right = out.rumble_right.max(small);
+        out.audio = profile.controller_audio.then_some(profile.audio_volume.min(100));
         // Send on change, plus a 1 s keep-alive (some pads revert otherwise).
         if l.last_output != Some(out) || l.last_output_sent.elapsed() > Duration::from_secs(1) {
             l.bt_seq = (l.bt_seq + 1) & 0x0F;
@@ -498,12 +539,14 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
     }
 }
 
-fn connect(api: &HidApi, cfg: &EngineConfig, sh: &Shared, hh: Option<&HidHide>) -> Result<Live> {
-    let dev = device::open_first(api, cfg.include_generic)?;
+fn connect(api: &HidApi, cfg: &EngineConfig, sh: &Shared, hh: Option<&HidHide>, skip: &HashSet<CString>) -> Result<Live> {
+    let generic = sh.include_generic.load(Ordering::Acquire);
+    let dev = device::open_first_except(api, generic, skip)?;
     let profile = sh.profile.lock().unwrap().clone();
+    let pre_paths: HashSet<CString> = device::enumerate(api, true).into_iter().map(|f| f.path).collect();
 
     let vpad: Box<dyn VirtualPad> = if cfg.enable_virtual && profile.target != VirtualTarget::None {
-        virtual_pad::create_default()?
+        virtual_pad::create(profile.target)?
     } else {
         Box::new(NullPad)
     };
@@ -531,6 +574,7 @@ fn connect(api: &HidApi, cfg: &EngineConfig, sh: &Shared, hh: Option<&HidHide>) 
         target: profile.target,
         hide_requested: profile.hide_physical,
         hidden_instance,
+        pre_paths,
         last_output: None,
         last_output_sent: Instant::now(),
         bt_seq: 0,

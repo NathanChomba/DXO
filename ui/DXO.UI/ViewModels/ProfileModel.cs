@@ -11,7 +11,7 @@ public sealed class ProfileModel
 {
     public string Name { get; set; } = "New profile";
     public List<string> MatchProcess { get; set; } = new();
-    /// "xbox360" | "dual_shock4" | "none"
+    /// "xbox360" | "dual_shock4" | "none"  (Rust VirtualTarget, snake_case)
     public string Target { get; set; } = "xbox360";
     public StickModel LeftStick { get; set; } = new();
     public StickModel RightStick { get; set; } = new();
@@ -24,6 +24,12 @@ public sealed class ProfileModel
     public byte PlayerLeds { get; set; } = 0b00100;
     public bool HidePhysical { get; set; } = true;
     public bool RumblePassthrough { get; set; } = true;
+    /// 0 = off, 1 = as the game sends, up to 2 = boosted
+    public float RumbleStrength { get; set; } = 1.0f;
+    public bool RumbleSwap { get; set; }
+    /// Sound to the controller's speaker / headset jack (USB)
+    public bool ControllerAudio { get; set; }
+    public byte AudioVolume { get; set; } = 70;
     public GyroModel Gyro { get; set; } = new();
     public uint IdleDisconnectMin { get; set; } = 15;
 

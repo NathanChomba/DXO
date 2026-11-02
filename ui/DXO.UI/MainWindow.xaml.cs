@@ -132,9 +132,9 @@ public sealed partial class MainWindow : Window
             case "lighting": Go(typeof(LightingPage)); break;
             case "mappings": Go(typeof(MappingsPage)); break;
             case "diagnostics": Go(typeof(DiagnosticsPage)); break;
-            case "haptics": Soon("Haptics and Rumble", "Rumble intensity, rumble passthrough from games, and audio-driven haptics.", "Milestone 3 (rumble), Milestone 6 (audio haptics)"); break;
+            case "haptics": Go(typeof(HapticsPage)); break;
             case "motion": Go(typeof(MotionPage)); break;
-            case "games": Soon("Games", "Detected games with per-game profiles that switch automatically.", "Milestone 5"); break;
+            case "games": Go(typeof(GamesPage)); break;
             case "about": Go(typeof(AboutPage)); break;
         }
     }

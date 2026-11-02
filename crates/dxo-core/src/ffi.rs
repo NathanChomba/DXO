@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 5; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics
+pub const DXO_ABI_VERSION: u32 = 6; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -104,7 +104,7 @@ fn install_panic_log() {
 }
 
 /// Virtual-device setup and live status for the Virtual Device page.
-/// target: 0 = none (native), 1 = Xbox 360.
+/// target: 0 = none (native), 1 = Xbox 360, 2 = DualShock 4.
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DxoVirtual {
@@ -206,6 +206,7 @@ pub unsafe extern "C" fn dxo_get_state(h: *mut Engine, out: *mut DxoState) -> u8
                 Some(crate::device::Kind::DualSense) => 2,
                 Some(crate::device::Kind::DualSenseEdge) => 3,
                 Some(crate::device::Kind::Generic) => 4,
+                Some(crate::device::Kind::SwitchPro) => 5,
                 None => 0,
             },
             transport: m.transport as u8,
@@ -268,6 +269,7 @@ pub unsafe extern "C" fn dxo_set_output(h: *mut Engine, o: *const DxoOutput) {
             trigger_left: o.trigger_left.into(),
             trigger_right: o.trigger_right.into(),
             mic_led: false,
+            audio: None, // engine fills this from the profile
         }));
     })
 }
@@ -281,7 +283,8 @@ pub unsafe extern "C" fn dxo_get_virtual(h: *mut Engine, out: *mut DxoVirtual) -
         *out = DxoVirtual {
             target: match p.target {
                 crate::profile::VirtualTarget::None => 0,
-                _ => 1,
+                crate::profile::VirtualTarget::Xbox360 => 1,
+                crate::profile::VirtualTarget::DualShock4 => 2,
             },
             hide_physical: p.hide_physical as u8,
             rumble_passthrough: p.rumble_passthrough as u8,
@@ -297,8 +300,22 @@ pub unsafe extern "C" fn dxo_get_virtual(h: *mut Engine, out: *mut DxoVirtual) -
 pub unsafe extern "C" fn dxo_set_virtual(h: *mut Engine, target: u8, hide_physical: u8, rumble_passthrough: u8) {
     guard((), || {
         let Some(e) = engine(h) else { return };
-        let t = if target == 0 { crate::profile::VirtualTarget::None } else { crate::profile::VirtualTarget::Xbox360 };
+        let t = match target {
+            0 => crate::profile::VirtualTarget::None,
+            2 => crate::profile::VirtualTarget::DualShock4,
+            _ => crate::profile::VirtualTarget::Xbox360,
+        };
         e.set_virtual(t, hide_physical != 0, rumble_passthrough != 0);
+    })
+}
+
+/// Also use non-Sony gamepads (Switch Pro, generic HID). Takes effect at the next connect.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_include_generic(h: *mut Engine, on: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.set_include_generic(on != 0);
+        }
     })
 }
 

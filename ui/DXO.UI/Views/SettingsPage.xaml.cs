@@ -20,6 +20,7 @@ public sealed partial class SettingsPage : Page
         CloseToggle.IsOn = App.Settings.CloseToTray;
         MinToggle.IsOn = App.Settings.MinimizeToTray;
         StartToggle.IsOn = Autostart.IsEnabled;
+        GenericToggle.IsOn = App.Settings.IncludeGeneric;
         _loading = false;
         UpdateStartNote();
         // Cheap install checks: look for the files each driver ships.
@@ -54,6 +55,14 @@ public sealed partial class SettingsPage : Page
         App.Settings.CloseToTray = CloseToggle.IsOn;
         App.Settings.MinimizeToTray = MinToggle.IsOn;
         App.Settings.Save();
+    }
+
+    private void Generic_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.IncludeGeneric = GenericToggle.IsOn;
+        App.Settings.Save();
+        App.Engine?.SetIncludeGeneric(GenericToggle.IsOn);
     }
 
     private void Start_Toggled(object sender, RoutedEventArgs e)

@@ -96,6 +96,80 @@ pub fn to_xinput(s: &PadState) -> XInputReport {
     }
 }
 
+/// DualShock 4 wire layout (ViGEm DS4_REPORT), platform-independent for tests.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Ds4Wire {
+    pub lx: u8,
+    pub ly: u8,
+    pub rx: u8,
+    pub ry: u8,
+    /// bits 0-3 d-pad hat (8 = centred), 4 square, 5 cross, 6 circle, 7 triangle,
+    /// 8 L1, 9 R1, 10 L2, 11 R2, 12 share, 13 options, 14 L3, 15 R3
+    pub buttons: u16,
+    /// bit 0 PS, bit 1 touchpad click
+    pub special: u8,
+    pub l2: u8,
+    pub r2: u8,
+}
+
+#[inline]
+fn axis_u8(v: f32) -> u8 {
+    ((v.clamp(-1.0, 1.0) + 1.0) * 127.5).round() as u8
+}
+
+pub fn to_ds4(s: &PadState) -> Ds4Wire {
+    let has = |b| s.buttons.has(b);
+    let (u, d, l, r) = (has(Buttons::DPAD_UP), has(Buttons::DPAD_DOWN), has(Buttons::DPAD_LEFT), has(Buttons::DPAD_RIGHT));
+    let hat: u16 = match (u, r, d, l) {
+        (true, false, false, false) => 0,
+        (true, true, false, false) => 1,
+        (false, true, false, false) => 2,
+        (false, true, true, false) => 3,
+        (false, false, true, false) => 4,
+        (false, false, true, true) => 5,
+        (false, false, false, true) => 6,
+        (true, false, false, true) => 7,
+        _ => 8,
+    };
+    const MAP: [(u32, u16); 12] = [
+        (Buttons::WEST, 1 << 4),
+        (Buttons::SOUTH, 1 << 5),
+        (Buttons::EAST, 1 << 6),
+        (Buttons::NORTH, 1 << 7),
+        (Buttons::L1, 1 << 8),
+        (Buttons::R1, 1 << 9),
+        (Buttons::L2_DIGITAL, 1 << 10),
+        (Buttons::R2_DIGITAL, 1 << 11),
+        (Buttons::SELECT, 1 << 12),
+        (Buttons::START, 1 << 13),
+        (Buttons::L3, 1 << 14),
+        (Buttons::R3, 1 << 15),
+    ];
+    let mut buttons = hat;
+    for (ours, theirs) in MAP {
+        if has(ours) {
+            buttons |= theirs;
+        }
+    }
+    // Triggers count as pressed past a light touch even if the digital bit lagged.
+    if s.l2 > 0.1 {
+        buttons |= 1 << 10;
+    }
+    if s.r2 > 0.1 {
+        buttons |= 1 << 11;
+    }
+    Ds4Wire {
+        lx: axis_u8(s.lx),
+        ly: axis_u8(-s.ly), // DS4: 0 = up
+        rx: axis_u8(s.rx),
+        ry: axis_u8(-s.ry),
+        buttons,
+        special: has(Buttons::HOME) as u8 | ((has(Buttons::TOUCHPAD) as u8) << 1),
+        l2: (s.l2.clamp(0.0, 1.0) * 255.0).round() as u8,
+        r2: (s.r2.clamp(0.0, 1.0) * 255.0).round() as u8,
+    }
+}
+
 /// No-op pad: lets the engine run on non-Windows hosts and in tests.
 pub struct NullPad;
 impl VirtualPad for NullPad {
@@ -176,6 +250,70 @@ pub mod vigem {
     }
 }
 
+#[cfg(windows)]
+pub mod vigem_ds4 {
+    use super::*;
+    use crate::error::Error;
+    use vigem_client::{Client, DS4Report, DualShock4Wired, TargetId};
+
+    /// Virtual DualShock 4: games show PlayStation button prompts.
+    /// vigem-client can't receive rumble for DS4 targets yet, so no passthrough.
+    pub struct ViGEmDs4 {
+        target: DualShock4Wired<Client>,
+        last: Ds4Wire,
+    }
+
+    impl ViGEmDs4 {
+        pub fn new() -> Result<Self> {
+            let client = Client::connect().map_err(|e| Error::Virtual(format!("ViGEmBus not installed? {e:?}")))?;
+            let mut target = DualShock4Wired::new(client, TargetId::DUALSHOCK4_WIRED);
+            target.plugin().map_err(|e| Error::Virtual(format!("plugin: {e:?}")))?;
+            target.wait_ready().map_err(|e| Error::Virtual(format!("wait_ready: {e:?}")))?;
+            Ok(Self { target, last: Ds4Wire { buttons: 0xFFFF, ..Default::default() } })
+        }
+    }
+
+    impl VirtualPad for ViGEmDs4 {
+        fn update(&mut self, s: &PadState) -> Result<()> {
+            let w = to_ds4(s);
+            if w == self.last {
+                return Ok(());
+            }
+            self.last = w;
+            let r = DS4Report {
+                thumb_lx: w.lx,
+                thumb_ly: w.ly,
+                thumb_rx: w.rx,
+                thumb_ry: w.ry,
+                buttons: w.buttons,
+                special: w.special,
+                trigger_l: w.l2,
+                trigger_r: w.r2,
+            };
+            self.target.update(&r).map_err(|e| Error::Virtual(format!("update: {e:?}")))
+        }
+    }
+}
+
+/// Create the virtual pad for a profile's target.
+pub fn create(target: crate::profile::VirtualTarget) -> Result<Box<dyn VirtualPad>> {
+    use crate::profile::VirtualTarget;
+    match target {
+        VirtualTarget::None => Ok(Box::new(NullPad)),
+        VirtualTarget::Xbox360 => create_default(),
+        VirtualTarget::DualShock4 => {
+            #[cfg(windows)]
+            {
+                Ok(Box::new(vigem_ds4::ViGEmDs4::new()?))
+            }
+            #[cfg(not(windows))]
+            {
+                Ok(Box::new(NullPad))
+            }
+        }
+    }
+}
+
 /// Create the best available virtual pad for this platform.
 pub fn create_default() -> Result<Box<dyn VirtualPad>> {
     #[cfg(windows)]
@@ -203,5 +341,22 @@ mod tests {
         assert_eq!(x.thumb_lx, 32767);
         assert_eq!(x.thumb_ly, -32767);
         assert_eq!(x.right_trigger, 255);
+    }
+
+    #[test]
+    fn ds4_wire_layout() {
+        let mut s = PadState { ly: 1.0, r2: 1.0, ..Default::default() };
+        s.buttons.set(Buttons::SOUTH, true);
+        s.buttons.set(Buttons::DPAD_UP, true);
+        s.buttons.set(Buttons::DPAD_RIGHT, true);
+        s.buttons.set(Buttons::HOME, true);
+        let w = to_ds4(&s);
+        assert_eq!(w.buttons & 0x0F, 1, "up-right hat");
+        assert!(w.buttons & (1 << 5) != 0, "cross");
+        assert!(w.buttons & (1 << 11) != 0, "R2 from analog");
+        assert_eq!(w.ly, 0, "stick up = 0 on DS4");
+        assert_eq!(w.lx, 128);
+        assert_eq!(w.special, 1);
+        assert_eq!(to_ds4(&PadState::default()).buttons, 8, "centred hat");
     }
 }

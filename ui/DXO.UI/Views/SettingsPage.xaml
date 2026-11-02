@@ -26,6 +26,13 @@
                 <Button Content="Unhide all" Click="UnhideAll_Click" />
             </controls:SettingsCard>
 
+            <TextBlock Text="Controllers" Style="{StaticResource DxoSectionTitle}" />
+            <controls:SettingsCard Header="Other controllers (experimental)"
+                                   Description="Also use a Switch Pro Controller or a generic USB / Bluetooth gamepad when no PlayStation controller is connected. Reconnect the controller after turning this on.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="GenericToggle" Toggled="Generic_Toggled" />
+            </controls:SettingsCard>
+
             <TextBlock Text="App" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Start with Windows" Description="DXO starts in the tray when you sign in, so your controller is ready straight away.">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7E8;" /></controls:SettingsCard.HeaderIcon>

@@ -91,6 +91,7 @@ public partial class App : Application
                 // DXO_NO_VIRTUAL=1 runs the engine read-only (no virtual pad, no HidHide) for debugging.
                 bool virt = Environment.GetEnvironmentVariable("DXO_NO_VIRTUAL") != "1";
                 Engine = new DxoEngine(ProfilesDir, virt);
+                if (Settings.IncludeGeneric) Engine.SetIncludeGeneric(true);
             }
             catch (Exception ex) when (ex is DllNotFoundException or InvalidOperationException or EntryPointNotFoundException)
             {

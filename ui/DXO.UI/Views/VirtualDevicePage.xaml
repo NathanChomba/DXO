@@ -41,7 +41,7 @@
                     <RadioButtons x:Name="Mode" SelectionChanged="Mode_SelectionChanged">
                         <RadioButton Content="Native mode: no virtual controller, games read your pad directly" />
                         <RadioButton Content="Xbox 360 controller: works with almost every PC game" />
-                        <RadioButton Content="DualShock 4: keeps PlayStation button prompts (coming later)" IsEnabled="False" />
+                        <RadioButton Content="DualShock 4 controller: games show PlayStation button prompts" />
                         <RadioButton Content="DualSense: native adaptive triggers in supported games (research)" IsEnabled="False" />
                     </RadioButtons>
                     <TextBlock x:Name="ModeNote" Style="{StaticResource DxoCaption}" Margin="0,8,0,0" />

@@ -36,7 +36,7 @@ public sealed partial class VirtualDevicePage : Page
 
         _loading = true;
         var v = engine!.GetVirtual();
-        Mode.SelectedIndex = v.Target == 0 ? 0 : 1;
+        Mode.SelectedIndex = v.Target switch { 0 => 0, 2 => 2, _ => 1 };
         HideToggle.IsOn = v.HidePhysical != 0;
         RumbleToggle.IsOn = v.RumblePassthrough != 0;
         _loading = false;
@@ -47,8 +47,8 @@ public sealed partial class VirtualDevicePage : Page
     private void Push()
     {
         if (_loading || App.Engine is null) return;
-        bool xbox = Mode.SelectedIndex == 1;
-        App.Engine.SetVirtual(xbox, HideToggle.IsOn, RumbleToggle.IsOn);
+        byte target = Mode.SelectedIndex switch { 0 => 0, 2 => 2, _ => 1 };
+        App.Engine.SetVirtual(target, HideToggle.IsOn, RumbleToggle.IsOn);
         UpdateNote();
     }
 
@@ -62,7 +62,9 @@ public sealed partial class VirtualDevicePage : Page
         bool native = Mode.SelectedIndex == 0;
         ModeNote.Text = native
             ? "Native mode: games read your controller directly. Some only support Xbox controllers and won't see it."
-            : "Switching mode briefly reconnects your controller.";
+            : Mode.SelectedIndex == 2
+                ? "Switching mode briefly reconnects your controller. Game vibration can't reach your pad in DualShock 4 mode yet; use Xbox 360 mode if you want rumble."
+                : "Switching mode briefly reconnects your controller.";
         // Hiding and rumble passthrough only mean something with a virtual pad.
         HideToggle.IsEnabled = RumbleToggle.IsEnabled = !native && App.Engine is not null;
     }

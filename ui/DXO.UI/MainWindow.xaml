@@ -18,6 +18,24 @@
                 <Image x:Name="TitleLogo" Height="15" Stretch="Uniform" VerticalAlignment="Center" />
                 <TextBlock Text="v0.1" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
             </StackPanel>
+
+            <!-- Live status pill (Stitch header): pad, report rate, battery, hidden state -->
+            <Border Style="{StaticResource DxoPill}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsHitTestVisible="False" Visibility="{x:Bind Device.Connected, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE7FC;" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind Device.DeviceName, Mode=OneWay}" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Text="·" Foreground="{StaticResource DxoTextMuted}" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind Device.RateText, Mode=OneWay}" Style="{StaticResource DxoMono}" FontSize="12"
+                               Foreground="{StaticResource DxoSecondary}" VerticalAlignment="Center" />
+                    <TextBlock Text="·" Foreground="{StaticResource DxoTextMuted}" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind Device.BatteryText, Mode=OneWay}" Style="{StaticResource DxoMono}" FontSize="12"
+                               Foreground="{StaticResource DxoTertiary}" VerticalAlignment="Center" />
+                    <TextBlock Text="·" Foreground="{StaticResource DxoTextMuted}" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind Device.HiddenText, Mode=OneWay}" Style="{StaticResource DxoMono}" FontSize="11"
+                               Foreground="{StaticResource DxoAccentLight}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- ===== Nav + content ===== -->

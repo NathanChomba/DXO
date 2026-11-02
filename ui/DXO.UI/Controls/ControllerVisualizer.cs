@@ -83,6 +83,8 @@ public sealed class ControllerVisualizer : UserControl
     {
         1 => "ds4",
         2 or 3 => "dualsense",
+        4 => "xbox-series", // generic pad: closest common shape
+        5 => "switch-pro",
         _ => "ds4",
     };
 

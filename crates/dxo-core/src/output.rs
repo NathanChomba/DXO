@@ -70,6 +70,9 @@ pub struct OutputState {
     pub trigger_left: TriggerEffect,
     pub trigger_right: TriggerEffect,
     pub mic_led: bool,
+    /// Controller speaker + headset volume 0..=100; None = leave the pad's audio alone.
+    /// USB only: Windows plays sound to the pad's own audio device, these set its volume.
+    pub audio: Option<u8>,
 }
 
 // valid_flag0
@@ -100,7 +103,20 @@ fn dualsense_common(o: &OutputState) -> [u8; 47] {
     c[44] = o.lightbar.0;
     c[45] = o.lightbar.1;
     c[46] = o.lightbar.2;
+    if let Some(v) = o.audio {
+        // valid_flag0: headphone volume | speaker volume | audio control
+        c[0] |= (1 << 4) | (1 << 5) | (1 << 7);
+        c[4] = scale(v, 0x7F); // headphone
+        c[5] = scale(v, 0x64); // speaker
+        // Output path 3: speaker plays when nothing is in the headset jack. EXPERIMENTAL.
+        c[7] = 0x30;
+    }
     c
+}
+
+/// 0..=100 percent -> 0..=max
+fn scale(pct: u8, max: u8) -> u8 {
+    (pct.min(100) as u16 * max as u16 / 100) as u8
 }
 
 /// Build a complete output report for the given pad and transport.
@@ -133,6 +149,14 @@ pub fn build_report(kind: Kind, transport: Transport, o: &OutputState, bt_seq: u
             r[6] = o.lightbar.0;
             r[7] = o.lightbar.1;
             r[8] = o.lightbar.2;
+            if let Some(v) = o.audio {
+                // psdevwiki: 0x10 left, 0x20 right headphone volume, 0x80 speaker volume
+                r[1] |= 0x10 | 0x20 | 0x80;
+                let v = scale(v, 0x7F);
+                r[19] = v;
+                r[20] = v;
+                r[22] = v;
+            }
             r
         }
         (Kind::DualShock4, Transport::Bluetooth) => {
@@ -194,6 +218,16 @@ mod tests {
         assert_eq!(r[7], 200);
         assert_eq!(&r[8..11], &[10, 20, 30]);
         assert_eq!(u32::from_le_bytes(r[74..78].try_into().unwrap()), bt_crc(&r[..74]));
+    }
+
+    #[test]
+    fn ds4_usb_audio_volume() {
+        let o = OutputState { audio: Some(100), ..Default::default() };
+        let r = build_report(Kind::DualShock4, Transport::Usb, &o, 0);
+        assert_eq!(r[1], 0x07 | 0xB0);
+        assert_eq!((r[19], r[20], r[22]), (0x7F, 0x7F, 0x7F));
+        let quiet = build_report(Kind::DualShock4, Transport::Usb, &OutputState::default(), 0);
+        assert_eq!(quiet[1], 0x07, "no audio = don't touch volumes");
     }
 
     #[test]

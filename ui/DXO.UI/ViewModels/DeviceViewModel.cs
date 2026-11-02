@@ -23,6 +23,9 @@ public partial class DeviceViewModel : ObservableObject
     [ObservableProperty] private string _batteryText = "";
     [ObservableProperty] private string _rateText = "";
     [ObservableProperty] private bool _isDualSense;
+    /// "HIDDEN FROM GAMES" / "VISIBLE TO GAMES" for the title-bar pill.
+    [ObservableProperty] private string _hiddenText = "";
+    private int _tick;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatus))]
     private string _status = "";
@@ -72,7 +75,9 @@ public partial class DeviceViewModel : ObservableObject
 
         Status = "";
         DeviceName = e.ProductName;
-        KindText = s.Kind switch { 1 => "DualShock 4", 2 => "DualSense", 3 => "DualSense Edge", 4 => "Generic gamepad", _ => "Unknown" };
+        KindText = s.Kind switch { 1 => "DualShock 4", 2 => "DualSense", 3 => "DualSense Edge", 4 => "Generic gamepad", 5 => "Switch Pro Controller", _ => "Unknown" };
+        if (_tick++ % 15 == 0) // twice a second is plenty
+            HiddenText = e.GetVirtual().PadHidden != 0 ? "HIDDEN FROM GAMES" : "VISIBLE TO GAMES";
         IsDualSense = s.Kind is 2 or 3;
         bool bt = s.Transport == 1;
         TransportText = bt ? "Bluetooth" : "USB";
