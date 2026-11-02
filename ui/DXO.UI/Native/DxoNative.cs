@@ -73,7 +73,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 2;
+    public const uint ExpectedAbi = 3;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -92,6 +92,16 @@ internal static partial class DxoNative
     [LibraryImport(Dll)] public static partial byte dxo_get_virtual(IntPtr engine, out DxoVirtual v);
     [LibraryImport(Dll)] public static partial void dxo_set_virtual(IntPtr engine, byte target, byte hidePhysical, byte rumblePassthrough);
     [LibraryImport(Dll)] public static partial void dxo_reconnect(IntPtr engine);
+
+    // ---- profile editor (ABI 3) ----
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_active_profile_json(IntPtr engine, byte* buf, nuint len);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial byte dxo_set_active_profile_json(IntPtr engine, string json);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static unsafe partial nuint dxo_profile_file_to_json(string path, byte* buf, nuint len);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial byte dxo_profile_json_to_file(string json, string path);
+    [LibraryImport(Dll)] public static partial void dxo_reload_profiles(IntPtr engine);
 }
 
 /// Safe, disposable wrapper. One instance for the app's lifetime.
@@ -153,6 +163,29 @@ public sealed unsafe class DxoEngine : IDisposable
         DxoNative.dxo_set_virtual(_h, (byte)(xbox360 ? 1 : 0), (byte)(hidePhysical ? 1 : 0), (byte)(rumblePassthrough ? 1 : 0));
 
     public void Reconnect() => DxoNative.dxo_reconnect(_h);
+
+    // ---- profiles ----
+    public string ActiveProfileJson => ReadString(DxoNative.dxo_get_active_profile_json);
+    public bool SetActiveProfileJson(string json) => DxoNative.dxo_set_active_profile_json(_h, json) != 0;
+    public void ReloadProfiles() => DxoNative.dxo_reload_profiles(_h);
+
+    /// TOML file -> JSON via the engine's own parser. Empty string if invalid.
+    public static string ProfileFileToJson(string path)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            nuint need = DxoNative.dxo_profile_file_to_json(path, null, 0);
+            if (need <= 1) return string.Empty;
+            var buf = new byte[(int)need];
+            nuint got;
+            fixed (byte* p = buf) got = DxoNative.dxo_profile_file_to_json(path, p, need);
+            if (got <= need) return Encoding.UTF8.GetString(buf, 0, (int)got - 1);
+        }
+        return string.Empty;
+    }
+
+    /// JSON -> validated TOML file via the engine. False if the JSON was rejected.
+    public static bool ProfileJsonToFile(string json, string path) => DxoNative.dxo_profile_json_to_file(json, path) != 0;
 
     public void Dispose()
     {

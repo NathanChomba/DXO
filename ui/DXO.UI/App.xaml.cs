@@ -38,6 +38,21 @@ public partial class App : Application
         }
     }
 
+    /// User profiles live outside the build folder so rebuilding never wipes them.
+    public static readonly string ProfilesDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DXO", "profiles");
+
+    /// First run: seed the user's profiles folder with the bundled examples.
+    private static void EnsureProfilesDir()
+    {
+        Directory.CreateDirectory(ProfilesDir);
+        if (Directory.GetFiles(ProfilesDir, "*.toml").Length > 0) return;
+        var bundled = Path.Combine(AppContext.BaseDirectory, "profiles");
+        if (!Directory.Exists(bundled)) return;
+        foreach (var f in Directory.GetFiles(bundled, "*.toml"))
+            File.Copy(f, Path.Combine(ProfilesDir, Path.GetFileName(f)), overwrite: false);
+    }
+
     public static void LogCrash(string where, Exception? ex)
     {
         try
@@ -55,8 +70,10 @@ public partial class App : Application
         {
             try
             {
-                var profiles = Path.Combine(AppContext.BaseDirectory, "profiles");
-                Engine = new DxoEngine(Directory.Exists(profiles) ? profiles : null);
+                EnsureProfilesDir();
+                // DXO_NO_VIRTUAL=1 runs the engine read-only (no virtual pad, no HidHide) for debugging.
+                bool virt = Environment.GetEnvironmentVariable("DXO_NO_VIRTUAL") != "1";
+                Engine = new DxoEngine(ProfilesDir, virt);
             }
             catch (Exception ex) when (ex is DllNotFoundException or InvalidOperationException or EntryPointNotFoundException)
             {

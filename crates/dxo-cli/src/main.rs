@@ -226,6 +226,11 @@ fn cmd_run(profiles_dir: Option<PathBuf>) -> R {
     while running.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(33));
         let s = engine.snapshot();
+        if engine.has_failed() {
+            eprintln!("\n{}", s.last_error.unwrap_or_default());
+            engine.stop();
+            std::process::exit(1);
+        }
         if s.connected {
             print_state(&s.mapped, s.reports_per_sec);
         } else if let Some(e) = &s.last_error {

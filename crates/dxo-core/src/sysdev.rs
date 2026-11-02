@@ -72,7 +72,7 @@ impl SingleInstance {
             }
             if GetLastError() == ERROR_ALREADY_EXISTS {
                 CloseHandle(h);
-                return Err(Error::Virtual(
+                return Err(Error::AlreadyRunning(
                     "Another copy of DXO is already running (the app or the CLI). Close it first.".into(),
                 ));
             }

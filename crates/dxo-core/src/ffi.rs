@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 2; // 2: virtual-device controls
+pub const DXO_ABI_VERSION: u32 = 3; // 2: virtual-device controls, 3: profile editor
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -274,6 +274,81 @@ pub unsafe extern "C" fn dxo_reconnect(h: *mut Engine) {
     guard((), || {
         if let Some(e) = engine(h) {
             e.request_reconnect();
+        }
+    })
+}
+
+// ---- profile editor (ABI 3) ---------------------------------------------
+// The UI edits profiles as JSON (System.Text.Json); files on disk stay TOML.
+// Rust does every parse/serialise so both sides agree on one schema.
+
+unsafe fn str_arg<'a>(p: *const c_char) -> Option<&'a str> {
+    if p.is_null() { None } else { CStr::from_ptr(p).to_str().ok() }
+}
+
+/// Active profile as JSON. Returns bytes needed incl. NUL (see dxo_get_product_name).
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_active_profile_json(h: *mut Engine, buf: *mut u8, len: usize) -> usize {
+    guard(0, || {
+        let Some(e) = engine(h) else { return 0 };
+        copy_str(serde_json::to_string(&e.profile()).unwrap_or_default(), buf, len)
+    })
+}
+
+/// Activate a profile given as JSON (does not save it). Returns 1 on success.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_active_profile_json(h: *mut Engine, json: *const c_char) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(j)) = (engine(h), str_arg(json)) else { return 0 };
+        match serde_json::from_str::<Profile>(j) {
+            Ok(p) => {
+                e.set_profile(p);
+                1
+            }
+            Err(err) => {
+                log::warn!("bad profile json: {err}");
+                0
+            }
+        }
+    })
+}
+
+/// Read a profile TOML file and return it as JSON (0 = unreadable / invalid).
+#[no_mangle]
+pub unsafe extern "C" fn dxo_profile_file_to_json(path: *const c_char, buf: *mut u8, len: usize) -> usize {
+    guard(0, || {
+        let Some(p) = path_arg(path) else { return 0 };
+        match Profile::load(&p) {
+            Ok(pr) => copy_str(serde_json::to_string(&pr).unwrap_or_default(), buf, len),
+            Err(err) => {
+                log::warn!("{err}");
+                0
+            }
+        }
+    })
+}
+
+/// Validate a JSON profile and write it to `path` as TOML. Returns 1 on success.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_profile_json_to_file(json: *const c_char, path: *const c_char) -> u8 {
+    guard(0, || {
+        let (Some(j), Some(p)) = (str_arg(json), path_arg(path)) else { return 0 };
+        match serde_json::from_str::<Profile>(j).map_err(|e| e.to_string()).and_then(|pr| pr.save(&p).map_err(|e| e.to_string())) {
+            Ok(()) => 1,
+            Err(err) => {
+                log::warn!("save profile: {err}");
+                0
+            }
+        }
+    })
+}
+
+/// Re-read the profiles folder for per-game auto-switching.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_reload_profiles(h: *mut Engine) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.reload_profiles();
         }
     })
 }

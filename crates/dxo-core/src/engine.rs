@@ -63,6 +63,10 @@ struct Shared {
     profile_dirty: AtomicBool,
     /// UI asked for a fresh connect (e.g. "Fix double input").
     reconnect: AtomicBool,
+    /// Profiles were saved/deleted: re-read the folder for game auto-switch.
+    reload_profiles: AtomicBool,
+    /// Set if the engine refused to start (e.g. another copy running).
+    fatal: AtomicBool,
 }
 
 pub struct Engine {
@@ -79,6 +83,8 @@ impl Engine {
             profile: Mutex::new(Profile::default()),
             profile_dirty: AtomicBool::new(true),
             reconnect: AtomicBool::new(false),
+            reload_profiles: AtomicBool::new(false),
+            fatal: AtomicBool::new(false),
         });
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
@@ -132,6 +138,16 @@ impl Engine {
         self.shared.reconnect.store(true, Ordering::Release);
     }
 
+    /// Re-read the profiles folder (call after saving or deleting a profile).
+    pub fn reload_profiles(&self) {
+        self.shared.reload_profiles.store(true, Ordering::Release);
+    }
+
+    /// True if the engine stopped for good (e.g. another copy of DXO is running).
+    pub fn has_failed(&self) -> bool {
+        self.shared.fatal.load(Ordering::Acquire)
+    }
+
     /// Override output (lightbar/triggers/rumble) from the UI; None = use profile.
     pub fn set_output_override(&self, o: Option<OutputState>) {
         *self.shared.output_override.lock().unwrap() = o;
@@ -172,6 +188,7 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         Err(e) => {
             log::error!("{e}");
             sh.snapshot.lock().unwrap().last_error = Some(e.to_string());
+            sh.fatal.store(true, Ordering::Release);
             return;
         }
     };
@@ -202,7 +219,7 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         None
     };
 
-    let profiles = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
+    let mut profiles = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
     let mut fg = Watcher::default();
     let mut last_fg_check = Instant::now();
     let mut cemu: Option<CemuHookServer> = None;
@@ -261,6 +278,11 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         let l = live.as_mut().unwrap();
 
         // ---- profile switching (M5) ------------------------------------------
+        if sh.reload_profiles.swap(false, Ordering::AcqRel) {
+            profiles = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
+            fg = Watcher::default(); // re-evaluate the current foreground app
+            log::info!("reloaded {} profiles", profiles.len());
+        }
         if last_fg_check.elapsed() > Duration::from_millis(500) {
             last_fg_check = Instant::now();
             if let Some(exe) = fg.poll() {

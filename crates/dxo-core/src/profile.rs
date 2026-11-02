@@ -172,6 +172,20 @@ mod tests {
     }
 
     #[test]
+    fn json_roundtrip_for_the_ui() {
+        let mut p = Profile::default();
+        p.remap = vec![("cross".into(), "circle".into())];
+        p.right_stick.curve = Curve::Power { exponent: 1.5 };
+        let j = serde_json::to_string(&p).unwrap();
+        assert!(j.contains("\"type\":\"power\""));
+        let back: Profile = serde_json::from_str(&j).unwrap();
+        assert_eq!(p, back);
+        // partial JSON from the UI falls back to defaults like TOML does
+        let mini: Profile = serde_json::from_str(r#"{"name":"Mini"}"#).unwrap();
+        assert_eq!(mini.target, VirtualTarget::Xbox360);
+    }
+
+    #[test]
     fn partial_toml_uses_defaults() {
         let p: Profile = toml::from_str("name = \"Mini\"\nlightbar = [255, 0, 0]").unwrap();
         assert_eq!(p.name, "Mini");

@@ -18,6 +18,8 @@ pub enum Error {
     Profile(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("{0}")]
+    AlreadyRunning(String),
     #[error("not supported on this platform/milestone: {0}")]
     Unsupported(&'static str),
 }
