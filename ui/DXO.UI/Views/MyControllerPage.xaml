@@ -25,7 +25,6 @@
                 </controls:SettingsCard>
                 <controls:SettingsCard Header="Battery" Description="{x:Bind Device.BatteryText, Mode=OneWay}" Margin="0,0,4,4">
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE83F;" /></controls:SettingsCard.HeaderIcon>
-                    <ProgressBar Width="80" Maximum="100" Value="{x:Bind Device.BatteryPercent, Mode=OneWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard Header="Report rate" Description="{x:Bind Device.RateText, Mode=OneWay}" Margin="0,0,4,4">
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEC4A;" /></controls:SettingsCard.HeaderIcon>
