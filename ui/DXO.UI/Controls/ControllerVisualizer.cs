@@ -46,6 +46,31 @@ public sealed class ControllerVisualizer : UserControl
         ["paddle_l"] = DxoButtons.PaddleL, ["paddle_r"] = DxoButtons.PaddleR,
     };
 
+    /// Hit-zone name -> engine button key (mapping.rs `button_from_name`).
+    public static readonly Dictionary<string, string> ZoneKeys = new()
+    {
+        ["btn_south"] = "cross", ["btn_east"] = "circle", ["btn_west"] = "square", ["btn_north"] = "triangle",
+        ["dpad_up"] = "up", ["dpad_down"] = "down", ["dpad_left"] = "left", ["dpad_right"] = "right",
+        ["shoulder_l"] = "l1", ["shoulder_r"] = "r1", ["btn_select"] = "share", ["btn_start"] = "options",
+        ["btn_home"] = "ps", ["touchpad"] = "touchpad", ["stick_l"] = "l3", ["stick_r"] = "r3",
+        ["paddle_l"] = "paddle_l", ["paddle_r"] = "paddle_r",
+    };
+
+    /// Raised with the engine button key when a zone is clicked (Mappings page).
+    public event Action<string>? ZoneClicked;
+
+    private string? _selectedZone;
+    private uint _lastButtons;
+
+    /// Outline one button (engine key, e.g. "cross"); null clears it.
+    public void SetSelected(string? key)
+    {
+        _selectedZone = null;
+        foreach (var (zone, k) in ZoneKeys)
+            if (k == key) _selectedZone = zone;
+        Paint();
+    }
+
     public ControllerVisualizer()
     {
         _stage.Children.Add(_overlay);
@@ -133,13 +158,18 @@ public sealed class ControllerVisualizer : UserControl
             zone.Stroke = PressStroke;
             zone.StrokeThickness = 4;
             zone.Opacity = 0;
+            string zoneName = c.Name;
+            zone.Tapped += (_, e) =>
+            {
+                if (ZoneKeys.TryGetValue(zoneName, out var k)) { ZoneClicked?.Invoke(k); e.Handled = true; }
+            };
             _overlay.Children.Add(zone);
             _zones[c.Name] = zone;
 
             if (shape == "stick")
             {
                 double travel = v.TryGetProperty("travel", out var t) ? t.GetDouble() : 40;
-                var dot = new Ellipse { Width = 30, Height = 30, Fill = StickDot };
+                var dot = new Ellipse { Width = 30, Height = 30, Fill = StickDot, IsHitTestVisible = false };
                 _overlay.Children.Add(dot);
                 _sticks[c.Name] = (dot, x, y, travel);
                 MoveDot(dot, x, y);
@@ -150,13 +180,19 @@ public sealed class ControllerVisualizer : UserControl
     /// Call at UI rate with the latest engine state.
     public void Update(uint buttons, float lx, float ly, float rx, float ry)
     {
-        foreach (var (name, zone) in _zones)
-        {
-            bool on = ZoneBits.TryGetValue(name, out var bit) && (buttons & (uint)bit) != 0;
-            zone.Opacity = on ? 1 : 0;
-        }
+        _lastButtons = buttons;
+        Paint();
         Stick("stick_l", lx, ly);
         Stick("stick_r", rx, ry);
+    }
+
+    private void Paint()
+    {
+        foreach (var (name, zone) in _zones)
+        {
+            bool on = ZoneBits.TryGetValue(name, out var bit) && (_lastButtons & (uint)bit) != 0;
+            zone.Opacity = on ? 1 : name == _selectedZone ? 0.55 : 0;
+        }
     }
 
     private void Stick(string name, float x, float y)

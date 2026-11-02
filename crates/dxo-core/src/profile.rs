@@ -99,8 +99,11 @@ pub struct Profile {
     pub left_stick: StickConfig,
     pub right_stick: StickConfig,
     pub trigger_deadzone: f32,
-    /// (from, to) pairs using names from `mapping::button_from_name`
+    /// (from, to) pairs using names from `mapping::button_from_name`.
+    /// Older, simpler form; the Mappings page writes `bindings` instead.
     pub remap: Vec<(String, String)>,
+    /// Per-button actions: other button, key, mouse, turbo, toggle.
+    pub bindings: Vec<crate::bindings::Binding>,
     pub lightbar: [u8; 3],
     pub player_leds: u8,
     pub hide_physical: bool,
@@ -121,6 +124,7 @@ impl Default for Profile {
             right_stick: StickConfig::default(),
             trigger_deadzone: 0.02,
             remap: vec![],
+            bindings: vec![],
             lightbar: [0, 64, 255],
             player_leds: 0b00100,
             hide_physical: true,

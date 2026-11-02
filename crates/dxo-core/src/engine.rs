@@ -10,7 +10,9 @@
 use crate::device::{self, Device, Kind};
 use crate::error::Result;
 use crate::foreground::Watcher;
+use crate::bindings::{self, Runner};
 use crate::gyro::{CalState, Calibrator, CemuHookServer, GyroMouse};
+use std::collections::VecDeque;
 use crate::hidhide::{self, HidHide};
 use crate::mapping;
 use crate::output::{self, OutputState, TriggerEffect};
@@ -73,6 +75,20 @@ impl Default for EngineConfig {
     }
 }
 
+/// Diagnostics page data: report arrival times and the latest raw report.
+#[derive(Debug, Clone, Default)]
+pub struct Diag {
+    /// Gap between consecutive input reports as DXO received them, microseconds (newest last).
+    pub intervals_us: VecDeque<u32>,
+    pub last_report: Vec<u8>,
+    /// Total reports since connect.
+    pub reports: u64,
+}
+
+impl Diag {
+    pub const KEEP: usize = 500;
+}
+
 struct Shared {
     running: AtomicBool,
     snapshot: Mutex<Snapshot>,
@@ -88,6 +104,7 @@ struct Shared {
     fatal: AtomicBool,
     /// UI asked for a manual gyro calibration.
     calibrate_gyro: AtomicBool,
+    diag: Mutex<Diag>,
 }
 
 pub struct Engine {
@@ -107,6 +124,7 @@ impl Engine {
             reload_profiles: AtomicBool::new(false),
             fatal: AtomicBool::new(false),
             calibrate_gyro: AtomicBool::new(false),
+            diag: Mutex::new(Diag::default()),
         });
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
@@ -163,6 +181,10 @@ impl Engine {
     /// Re-read the profiles folder (call after saving or deleting a profile).
     pub fn reload_profiles(&self) {
         self.shared.reload_profiles.store(true, Ordering::Release);
+    }
+
+    pub fn diag(&self) -> Diag {
+        self.shared.diag.lock().unwrap().clone()
     }
 
     /// Measure the gyro's drift now (the controller should lie still for 2 s).
@@ -255,6 +277,8 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
     let mut cemu_failed = false;
     let mut calib = Calibrator::default();
     let mut gyro_mouse = GyroMouse::default();
+    let mut runner = Runner::default();
+    let mut last_report_at: Option<Instant> = None;
 
     let mut live: Option<Live> = None;
     // Device we already restarted after hiding it, so its own reconnect
@@ -300,6 +324,8 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
                     snap.virtual_active = l.target != VirtualTarget::None && cfg.enable_virtual;
                     calib.reset(); // a different pad drifts differently
                     gyro_mouse = GyroMouse::default();
+                    *sh.diag.lock().unwrap() = Diag::default();
+                    last_report_at = None;
                     live = Some(l);
                 }
                 Err(e) => {
@@ -358,6 +384,7 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         }
         if setup_changed || asked {
             log::info!("reconnecting (target {:?}, hide {})", profile.target, profile.hide_physical);
+            bindings::send(&runner.release_all());
             disconnect(live.take().unwrap(), hidhide.as_ref());
             {
                 let mut snap = sh.snapshot.lock().unwrap();
@@ -372,11 +399,26 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         // ---- input (M1) -------------------------------------------------------
         match l.dev.poll(4) {
             Ok(Some(raw)) => {
-                let mapped = mapping::apply(&profile, &raw);
+                let now = Instant::now();
+                {
+                    let mut d = sh.diag.lock().unwrap();
+                    if let Some(prev) = last_report_at {
+                        if d.intervals_us.len() >= Diag::KEEP {
+                            d.intervals_us.pop_front();
+                        }
+                        d.intervals_us.push_back(now.duration_since(prev).as_micros().min(u32::MAX as u128) as u32);
+                    }
+                    d.last_report.clear();
+                    d.last_report.extend_from_slice(l.dev.last_report());
+                    d.reports += 1;
+                }
+                last_report_at = Some(now);
+
+                let mut mapped = mapping::apply(&profile, &raw);
+                bindings::send(&runner.process(&profile.bindings, &raw, &mut mapped, now));
                 if let Err(e) = l.vpad.update(&mapped) {
                     sh.snapshot.lock().unwrap().last_error = Some(e.to_string());
                 }
-                let now = Instant::now();
                 calib.feed(raw.gyro, now);
                 if let Some(c) = cemu.as_mut() {
                     c.tick(&raw, &calib.cal);
@@ -409,6 +451,7 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             Ok(None) => {}
             Err(e) => {
                 log::warn!("device lost: {e}");
+                bindings::send(&runner.release_all());
                 disconnect(live.take().unwrap(), hidhide.as_ref());
                 let mut snap = sh.snapshot.lock().unwrap();
                 snap.connected = false;
@@ -449,6 +492,7 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
         }
     }
 
+    bindings::send(&runner.release_all());
     if let Some(l) = live.take() {
         disconnect(l, hidhide.as_ref());
     }

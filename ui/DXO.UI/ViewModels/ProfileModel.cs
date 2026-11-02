@@ -18,6 +18,8 @@ public sealed class ProfileModel
     public float TriggerDeadzone { get; set; } = 0.02f;
     /// [from, to] pairs, e.g. ["cross", "circle"]
     public List<List<string>> Remap { get; set; } = new();
+    /// Per-button actions (Mappings page). Rust: bindings.rs `Binding`.
+    public List<BindingModel> Bindings { get; set; } = new();
     public int[] Lightbar { get; set; } = { 0, 64, 255 };
     public byte PlayerLeds { get; set; } = 0b00100;
     public bool HidePhysical { get; set; } = true;
@@ -55,6 +57,29 @@ public sealed class CurveModel
     public string Type { get; set; } = "linear";
     public float? Exponent { get; set; }
     public float? Amount { get; set; }
+}
+
+public sealed class BindingModel
+{
+    /// Source button key, e.g. "cross", "r2"
+    public string Button { get; set; } = "";
+    public ActionModel Action { get; set; } = new();
+    public bool Turbo { get; set; }
+    public float TurboHz { get; set; } = 10f;
+    public bool Toggle { get; set; }
+}
+
+/// Rust: #[serde(tag = "type")] enum Action { Same, Button { to }, Key { vk }, Mouse { button }, Disabled }
+public sealed class ActionModel
+{
+    /// "same" | "button" | "key" | "mouse" | "disabled"
+    public string Type { get; set; } = "same";
+    /// target pad button (Type = "button")
+    public string? To { get; set; }
+    /// Windows virtual-key code (Type = "key")
+    public ushort? Vk { get; set; }
+    /// "left" | "right" | "middle" | "back" | "forward" | "wheel_up" | "wheel_down" (Type = "mouse")
+    public string? Button { get; set; }
 }
 
 public sealed class GyroModel

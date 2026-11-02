@@ -13,6 +13,7 @@ pub mod engine;
 pub mod error;
 pub mod ffi;
 pub mod foreground;
+pub mod bindings;
 pub mod gyro;
 pub mod haptics;
 pub mod hidhide;

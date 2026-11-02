@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 4; // 2: virtual-device controls, 3: profile editor, 4: motion
+pub const DXO_ABI_VERSION: u32 = 5; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -133,6 +133,22 @@ pub struct DxoMotion {
     pub cemu_port: u16,
     pub mouse_active: u8,
     pub _pad: u8,
+}
+
+/// Diagnostics: report-arrival statistics over the last `samples` gaps (32 bytes).
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DxoTiming {
+    pub samples: u32,
+    pub avg_ms: f32,
+    pub min_ms: f32,
+    pub max_ms: f32,
+    /// standard deviation of the gaps
+    pub jitter_ms: f32,
+    /// gaps more than twice the average (dropped / late reports)
+    pub late: u32,
+    pub reports_total: u32,
+    pub report_len: u32,
 }
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
@@ -333,6 +349,51 @@ pub unsafe extern "C" fn dxo_calibrate_gyro(h: *mut Engine) {
     })
 }
 
+// ---- diagnostics (ABI 5) --------------------------------------------------
+
+/// Fill `out` with timing stats and copy up to `max` recent gaps (ms, oldest
+/// first) into `samples`. Returns how many gaps were copied.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_timing(h: *mut Engine, out: *mut DxoTiming, samples: *mut f32, max: usize) -> usize {
+    guard(0, || {
+        let (Some(e), Some(out)) = (engine(h), out.as_mut()) else { return 0 };
+        let d = e.diag();
+        let ms: Vec<f32> = d.intervals_us.iter().map(|&u| u as f32 / 1000.0).collect();
+        let n = ms.len();
+        let avg = if n > 0 { ms.iter().sum::<f32>() / n as f32 } else { 0.0 };
+        let var = if n > 0 { ms.iter().map(|v| (v - avg) * (v - avg)).sum::<f32>() / n as f32 } else { 0.0 };
+        *out = DxoTiming {
+            samples: n as u32,
+            avg_ms: avg,
+            min_ms: if n > 0 { ms.iter().copied().fold(f32::INFINITY, f32::min) } else { 0.0 },
+            max_ms: ms.iter().copied().fold(0.0, f32::max),
+            jitter_ms: var.sqrt(),
+            late: ms.iter().filter(|&&v| avg > 0.0 && v > avg * 2.0).count() as u32,
+            reports_total: d.reports.min(u32::MAX as u64) as u32,
+            report_len: d.last_report.len() as u32,
+        };
+        if samples.is_null() || max == 0 {
+            return 0;
+        }
+        let take = n.min(max);
+        std::ptr::copy_nonoverlapping(ms[n - take..].as_ptr(), samples, take);
+        take
+    })
+}
+
+/// Copy the latest raw input report into `buf`. Returns its full length.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_last_report(h: *mut Engine, buf: *mut u8, len: usize) -> usize {
+    guard(0, || {
+        let Some(e) = engine(h) else { return 0 };
+        let r = e.diag().last_report;
+        if !buf.is_null() {
+            std::ptr::copy_nonoverlapping(r.as_ptr(), buf, r.len().min(len));
+        }
+        r.len()
+    })
+}
+
 // ---- profile editor (ABI 3) ---------------------------------------------
 // The UI edits profiles as JSON (System.Text.Json); files on disk stay TOML.
 // Rust does every parse/serialise so both sides agree on one schema.
@@ -437,5 +498,6 @@ mod tests {
         assert_eq!(std::mem::size_of::<DxoOutput>(), 16);
         assert_eq!(std::mem::size_of::<DxoVirtual>(), 8);
         assert_eq!(std::mem::size_of::<DxoMotion>(), 32);
+        assert_eq!(std::mem::size_of::<DxoTiming>(), 32);
     }
 }

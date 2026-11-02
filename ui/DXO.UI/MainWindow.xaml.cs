@@ -3,8 +3,10 @@ using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using DXO.UI.Services;
 using DXO.UI.ViewModels;
 using DXO.UI.Views;
+using Microsoft.UI.Windowing;
 
 namespace DXO.UI;
 
@@ -12,14 +14,74 @@ public sealed partial class MainWindow : Window
 {
     public DeviceViewModel Device => App.Device;
 
+    private TrayIcon? _tray;
+    private bool _exiting;
+
     public MainWindow()
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 800));
-        // TODO: AppWindow.SetIcon("Assets/dxo.ico") once there is an icon file
+
+        string icon = System.IO.Path.Combine(AppContext.BaseDirectory, "dxo.ico");
+        if (System.IO.File.Exists(icon)) AppWindow.SetIcon(icon);
+
+        try
+        {
+            _tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(this), icon, "DXO");
+            _tray.OpenRequested += ShowFromTray;
+            _tray.ExitRequested += ExitApp;
+        }
+        catch (Exception ex) { App.LogCrash("Tray", ex); } // no tray: closing just closes
+
+        AppWindow.Closing += OnClosing;
+        AppWindow.Changed += OnWindowChanged;
+        Closed += (_, _) => _tray?.Dispose();
     }
+
+    // ================= tray =================
+
+    private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_exiting || _tray is null || !App.Settings.CloseToTray) return;
+        args.Cancel = true;
+        HideToTray();
+    }
+
+    private void OnWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (_tray is not null && App.Settings.MinimizeToTray && sender.IsVisible &&
+            sender.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+            HideToTray();
+    }
+
+    private void HideToTray()
+    {
+        AppWindow.Hide();
+        if (!App.Settings.TrayHintShown)
+        {
+            _tray?.ShowBalloon("DXO is still running", "Your controller keeps working. Click the DXO icon to open it, or right-click to exit.");
+            App.Settings.TrayHintShown = true;
+            App.Settings.Save();
+        }
+    }
+
+    public void ShowFromTray()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } p) p.Restore();
+        AppWindow.Show();
+        Activate();
+    }
+
+    /// Really quit: close the window for good (App disposes the engine, which unhides the pad).
+    public void ExitApp()
+    {
+        _exiting = true;
+        Close();
+    }
+
+    public void SetTrayTip(string tip) => _tray?.SetTip(tip);
 
     /// Called by App once App.Device exists, so x:Bind sees a non-null source.
     public void Start()
@@ -33,6 +95,8 @@ public sealed partial class MainWindow : Window
     private void OnDeviceChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DeviceViewModel.Connected)) UpdateStatusRing();
+        if (e.PropertyName is nameof(DeviceViewModel.Connected) or nameof(DeviceViewModel.DeviceName) or nameof(DeviceViewModel.ProfileName))
+            SetTrayTip(Device.Connected ? $"DXO: {Device.DeviceName} ({Device.ProfileName})" : "DXO: no controller");
     }
 
     private void UpdateStatusRing() =>
@@ -64,7 +128,8 @@ public sealed partial class MainWindow : Window
             case "virtual": Go(typeof(VirtualDevicePage)); break;
             case "triggers": Go(typeof(TriggersPage)); break;
             case "lighting": Go(typeof(LightingPage)); break;
-            case "mappings": Soon("Mappings", "Click a button on the controller diagram, then choose what it does: another button, a key, the mouse, a shortcut, turbo or toggle.", "Milestone 5"); break;
+            case "mappings": Go(typeof(MappingsPage)); break;
+            case "diagnostics": Go(typeof(DiagnosticsPage)); break;
             case "haptics": Soon("Haptics and Rumble", "Rumble intensity, rumble passthrough from games, and audio-driven haptics.", "Milestone 3 (rumble), Milestone 6 (audio haptics)"); break;
             case "motion": Go(typeof(MotionPage)); break;
             case "games": Soon("Games", "Detected games with per-game profiles that switch automatically.", "Milestone 5"); break;

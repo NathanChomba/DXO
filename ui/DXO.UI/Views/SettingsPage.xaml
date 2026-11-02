@@ -27,13 +27,18 @@
             </controls:SettingsCard>
 
             <TextBlock Text="App" Style="{StaticResource DxoSectionTitle}" />
-            <controls:SettingsCard Header="Start with Windows" Description="Launch DXO minimised when you sign in.">
+            <controls:SettingsCard Header="Start with Windows" Description="DXO starts in the tray when you sign in, so your controller is ready straight away.">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7E8;" /></controls:SettingsCard.HeaderIcon>
-                <ToggleSwitch IsEnabled="False" />
+                <ToggleSwitch x:Name="StartToggle" Toggled="Start_Toggled" />
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Close to tray" Description="Keep DXO running in the background when the window is closed.">
+            <TextBlock x:Name="StartNote" Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="4,0,0,4" />
+            <controls:SettingsCard Header="Close to tray" Description="Closing the window keeps DXO running in the tray. Right-click the tray icon to exit.">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8A7;" /></controls:SettingsCard.HeaderIcon>
-                <ToggleSwitch IsEnabled="False" />
+                <ToggleSwitch x:Name="CloseToggle" Toggled="Tray_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Minimise to tray" Description="Minimising hides DXO in the tray instead of the taskbar.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE921;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="MinToggle" Toggled="Tray_Toggled" />
             </controls:SettingsCard>
             <controls:SettingsCard Header="Profiles folder" Description="Where your profile TOML files live." IsClickEnabled="True" Click="OpenProfiles_Click">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B7;" /></controls:SettingsCard.HeaderIcon>

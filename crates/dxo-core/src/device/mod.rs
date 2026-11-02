@@ -90,6 +90,7 @@ pub struct Device {
     pub hid: HidDevice,
     parser: Parser,
     buf: Vec<u8>,
+    last_len: usize,
     seq: u64,
 }
 
@@ -133,7 +134,7 @@ impl Device {
         };
         // Windows reads BT HID reports at the descriptor's maximum input
         // length (547 bytes for a DS4 over BT), so leave plenty of room.
-        Ok(Device { info, hid, parser, buf: vec![0u8; 1024], seq: 0 })
+        Ok(Device { info, hid, parser, buf: vec![0u8; 1024], last_len: 0, seq: 0 })
     }
 
     /// Block up to `timeout_ms` for one input report. `Ok(None)` on timeout.
@@ -142,6 +143,7 @@ impl Device {
         if n == 0 {
             return Ok(None);
         }
+        self.last_len = n;
         let report = &self.buf[..n];
         // Trust the report id over hidapi's bus type: some Windows BT stacks
         // report an unknown bus. 0x11 (DS4) / 0x31 (DualSense) only exist on BT.
@@ -160,6 +162,11 @@ impl Device {
         st.sequence = self.seq;
         st.transport = self.info.transport;
         Ok(Some(st))
+    }
+
+    /// Bytes of the most recent input report (Diagnostics page).
+    pub fn last_report(&self) -> &[u8] {
+        &self.buf[..self.last_len]
     }
 
     pub fn write(&self, report: &[u8]) -> Result<()> {

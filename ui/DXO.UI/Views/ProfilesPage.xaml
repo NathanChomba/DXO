@@ -129,11 +129,13 @@
                         <Slider x:Name="TrigDead" Width="220" Minimum="0" Maximum="0.3" StepFrequency="0.01" ValueChanged="Slider_Changed" />
                     </controls:SettingsCard>
 
-                    <TextBlock Text="Button remaps" Style="{StaticResource DxoSectionTitle}" />
-                    <StackPanel x:Name="RemapList" Spacing="4" />
-                    <Button Click="AddRemap_Click" Margin="0,4,0,0">
-                        <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE710;" FontSize="14" /><TextBlock Text="Add remap" /></StackPanel>
-                    </Button>
+                    <TextBlock Text="Button mappings" Style="{StaticResource DxoSectionTitle}" />
+                    <controls:SettingsCard x:Name="MappingsCard" Header="Button mappings" IsClickEnabled="True" Click="EditMappings_Click">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></controls:SettingsCard.HeaderIcon>
+                        <controls:SettingsCard.Description>
+                            <TextBlock x:Name="MappingsSummary" TextWrapping="Wrap" />
+                        </controls:SettingsCard.Description>
+                    </controls:SettingsCard>
 
                     <TextBlock Text="Lighting and virtual pad" Style="{StaticResource DxoSectionTitle}" />
                     <controls:SettingsCard Header="Light bar colour">

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DXO.UI.Views.MappingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:dxo="using:DXO.UI.Controls">
+
+    <Grid Padding="{StaticResource DxoPagePadding}" RowSpacing="8" ColumnSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="380" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.ColumnSpan="2">
+            <TextBlock Text="Mappings" Style="{StaticResource DxoPageTitle}" />
+            <TextBlock x:Name="SubTitle" Style="{StaticResource DxoCaption}"
+                       Text="Click a button on the controller (or in the list) and choose what it does. Changes apply straight away." />
+        </StackPanel>
+
+        <!-- ===== Left: controller + button list ===== -->
+        <Grid Grid.Row="1" RowSpacing="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="2*" MinHeight="200" />
+                <RowDefinition Height="3*" />
+            </Grid.RowDefinitions>
+            <Border Style="{StaticResource DxoCard}" Padding="12">
+                <dxo:ControllerVisualizer x:Name="Visual" />
+            </Border>
+            <Border Grid.Row="1" Style="{StaticResource DxoCard}" Padding="4">
+                <ListView x:Name="ButtonList" SelectionMode="Single" SelectionChanged="ButtonList_SelectionChanged">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="0,6" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Label}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Summary}" Foreground="{StaticResource DxoAccent}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+        </Grid>
+
+        <!-- ===== Right: editor for the selected button ===== -->
+        <ScrollViewer Grid.Row="1" Grid.Column="1">
+            <StackPanel x:Name="Editor" Spacing="4" Padding="0,0,8,0">
+                <TextBlock x:Name="EditTitle" Style="{StaticResource DxoSectionTitle}" Margin="0,0,0,6" />
+
+                <controls:SettingsCard Header="Does">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></controls:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="TypeBox" Width="190" SelectionChanged="TypeBox_SelectionChanged">
+                        <x:String>Itself (normal)</x:String>
+                        <x:String>Another button</x:String>
+                        <x:String>Keyboard key</x:String>
+                        <x:String>Mouse</x:String>
+                        <x:String>Nothing (disabled)</x:String>
+                    </ComboBox>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard x:Name="TargetCard" Header="Which one">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7C9;" /></controls:SettingsCard.HeaderIcon>
+                    <ComboBox x:Name="TargetBox" Width="190" DisplayMemberPath="Label" SelectionChanged="Changed" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard Header="Turbo" Description="Repeats the press quickly while you hold the button">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE945;" /></controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch x:Name="TurboToggle" Toggled="Toggle_Changed" />
+                </controls:SettingsCard>
+                <controls:SettingsCard x:Name="TurboRateCard" Header="Turbo speed">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></controls:SettingsCard.HeaderIcon>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Slider x:Name="TurboSlider" Width="130" Minimum="2" Maximum="30" StepFrequency="1" ValueChanged="Slider_Changed" />
+                        <TextBlock x:Name="TurboText" Width="44" VerticalAlignment="Center" />
+                    </StackPanel>
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Toggle" Description="Press once to hold it down, press again to let go">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B1;" /></controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch x:Name="ToggleToggle" Toggled="Toggle_Changed" />
+                </controls:SettingsCard>
+
+                <Button x:Name="ResetButton" Content="Reset this button" Click="Reset_Click" Margin="0,8,0,0" />
+                <TextBlock x:Name="Hint" Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="0,8,0,0" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- footer -->
+        <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="SaveStatus" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="Reset all" Click="ResetAll_Click" />
+            <Button x:Name="SaveButton" Grid.Column="2" Content="Save to profile" Style="{StaticResource AccentButtonStyle}" Click="Save_Click" />
+        </Grid>
+    </Grid>
+</Page>

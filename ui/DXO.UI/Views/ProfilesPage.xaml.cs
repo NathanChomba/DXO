@@ -33,15 +33,6 @@ public sealed partial class ProfilesPage : Page
     private bool _loading;
     private bool _dirty;
 
-    /// Engine button names (mapping.rs button_from_name) with friendly labels.
-    private static readonly (string Key, string Label)[] Buttons =
-    {
-        ("cross", "Cross / A"), ("circle", "Circle / B"), ("square", "Square / X"), ("triangle", "Triangle / Y"),
-        ("l1", "L1 / LB"), ("r1", "R1 / RB"), ("l3", "L3 / LS click"), ("r3", "R3 / RS click"),
-        ("share", "Share / Back"), ("options", "Options / Start"), ("ps", "PS / Guide"), ("touchpad", "Touchpad click"),
-        ("up", "D-pad up"), ("down", "D-pad down"), ("left", "D-pad left"), ("right", "D-pad right"),
-        ("mute", "Mute"), ("paddle_l", "Left paddle"), ("paddle_r", "Right paddle"),
-    };
 
     public ProfilesPage()
     {
@@ -118,8 +109,8 @@ public sealed partial class ProfilesPage : Page
         LoadStick(m.LeftStick, LDead, LOuter, LCurve, LCurveParam, LInvert);
         LoadStick(m.RightStick, RDead, ROuter, RCurve, RCurveParam, RInvert);
         TrigDead.Value = m.TriggerDeadzone;
-        RemapList.Children.Clear();
-        foreach (var pair in m.Remap.Where(p => p.Count == 2)) AddRemapRow(pair[0], pair[1]);
+        MappingsSummary.Text = ButtonCatalog.Summary(m);
+        MappingsCard.Header = entry.IsActive ? "Button mappings" : "Button mappings (opens this profile on the Mappings page)";
         var c = ColorHelper.FromArgb(255, (byte)m.Lightbar[0], (byte)m.Lightbar[1], (byte)m.Lightbar[2]);
         LightPicker.Color = c;
         ColorSwatch.Background = new SolidColorBrush(c);
@@ -166,10 +157,6 @@ public sealed partial class ProfilesPage : Page
         m.LeftStick = ReadStick(LDead, LOuter, LCurve, LCurveParam, LInvert);
         m.RightStick = ReadStick(RDead, ROuter, RCurve, RCurveParam, RInvert);
         m.TriggerDeadzone = (float)TrigDead.Value;
-        m.Remap = RemapList.Children.OfType<Grid>()
-            .Select(g => (from: (g.Children[0] as ComboBox)?.SelectedValue as string, to: (g.Children[2] as ComboBox)?.SelectedValue as string))
-            .Where(p => p.from is not null && p.to is not null && p.from != p.to)
-            .Select(p => new List<string> { p.from!, p.to! }).ToList();
         var c = LightPicker.Color;
         m.Lightbar = new[] { (int)c.R, c.G, c.B };
         m.Target = TargetBox.SelectedIndex == 1 ? "none" : "xbox360";
@@ -193,37 +180,20 @@ public sealed partial class ProfilesPage : Page
 
     // ================= remap rows =================
 
-    private void AddRemap_Click(object sender, RoutedEventArgs e) { AddRemapRow("cross", "circle"); SetDirty(true); }
-
-    private void AddRemapRow(string from, string to)
+    /// Mappings are edited on their own page, which works on the active
+    /// profile: make this one active (saving it first), then go there.
+    private void EditMappings_Click(object sender, RoutedEventArgs e)
     {
-        var row = new Grid { ColumnSpacing = 8 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        ComboBox Pick(string key)
+        if (_current is null) return;
+        if (!_current.IsActive || _dirty)
         {
-            var cb = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Label", SelectedValuePath = "Key" };
-            cb.ItemsSource = Buttons.Select(b => new KeyLabel(b.Key, b.Label)).ToList();
-            cb.SelectedValue = key;
-            cb.SelectionChanged += (_, _) => { if (!_loading) SetDirty(true); };
-            return cb;
+            var m = Save();
+            if (m is null) return;
+            if (App.Engine?.SetActiveProfileJson(m.ToJson()) != true) { StatusText.Text = "Couldn't activate this profile."; return; }
+            _dirty = false;
         }
-
-        var fromBox = Pick(from);
-        var arrow = new FontIcon { Glyph = "", FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
-        var toBox = Pick(to);
-        var remove = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 } };
-        ToolTipService.SetToolTip(remove, "Remove");
-        remove.Click += (_, _) => { RemapList.Children.Remove(row); SetDirty(true); };
-        Grid.SetColumn(arrow, 1); Grid.SetColumn(toBox, 2); Grid.SetColumn(remove, 3);
-        row.Children.Add(fromBox); row.Children.Add(arrow); row.Children.Add(toBox); row.Children.Add(remove);
-        RemapList.Children.Add(row);
+        MainWindow.NavigateTo("mappings");
     }
-
-    public sealed record KeyLabel(string Key, string Label);
 
     // ================= change tracking =================
 

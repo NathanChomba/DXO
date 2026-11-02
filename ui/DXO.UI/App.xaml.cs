@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Microsoft.UI.Xaml;
 using DXO.UI.Native;
+using DXO.UI.Services;
 using DXO.UI.ViewModels;
 
 namespace DXO.UI;
@@ -14,6 +15,11 @@ public partial class App : Application
 
     /// Shared controller state for the header card and all pages.
     public static DeviceViewModel Device { get; private set; } = null!;
+
+    public static AppSettings Settings { get; } = AppSettings.Load();
+
+    /// Held for the app's lifetime: one DXO window at a time.
+    private static System.Threading.Mutex? _instance;
 
     /// Needed by file pickers in unpackaged apps (they need an HWND).
     public Window? MainWindowRef { get; private set; }
@@ -68,6 +74,17 @@ public partial class App : Application
     {
         try
         {
+            // Already running (maybe hidden in the tray)? Show that one instead.
+            _instance = new System.Threading.Mutex(true, @"Local\DXO.UI.SingleInstance", out bool first);
+            if (!first)
+            {
+                TrayIcon.SignalOtherInstance();
+                Environment.Exit(0);
+                return;
+            }
+            // Started at sign-in: stay in the tray, no window.
+            bool toTray = Array.Exists(Environment.GetCommandLineArgs(), a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
+
             try
             {
                 EnsureProfilesDir();
@@ -85,7 +102,7 @@ public partial class App : Application
             Device = new DeviceViewModel(MainWindowRef.DispatcherQueue);
             ((MainWindow)MainWindowRef).Start();
             MainWindowRef.Closed += (_, _) => Engine?.Dispose(); // unhide the pad + unplug the virtual one
-            MainWindowRef.Activate();
+            if (!toTray) MainWindowRef.Activate();
         }
         catch (Exception ex)
         {

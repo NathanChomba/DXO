@@ -74,6 +74,17 @@ public struct DxoMotion
     private byte _p0;
 }
 
+/// Diagnostics: report-arrival stats (ffi.rs DxoTiming, 32 bytes).
+[StructLayout(LayoutKind.Sequential)]
+public struct DxoTiming
+{
+    public uint Samples;
+    public float AvgMs, MinMs, MaxMs, JitterMs;
+    public uint Late;          // gaps over twice the average
+    public uint ReportsTotal;
+    public uint ReportLen;
+}
+
 /// Bit positions of PadState.buttons (state.rs `Buttons`).
 [Flags]
 public enum DxoButtons : uint
@@ -88,7 +99,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 4;
+    public const uint ExpectedAbi = 5;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -121,6 +132,10 @@ internal static partial class DxoNative
     // ---- motion (ABI 4) ----
     [LibraryImport(Dll)] public static partial byte dxo_get_motion(IntPtr engine, out DxoMotion m);
     [LibraryImport(Dll)] public static partial void dxo_calibrate_gyro(IntPtr engine);
+
+    // ---- diagnostics (ABI 5) ----
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_timing(IntPtr engine, out DxoTiming t, float* samples, nuint max);
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_last_report(IntPtr engine, byte* buf, nuint len);
 }
 
 /// Safe, disposable wrapper. One instance for the app's lifetime.
@@ -215,6 +230,26 @@ public sealed unsafe class DxoEngine : IDisposable
 
     /// Measure gyro drift over the next 2 s; the controller should lie still.
     public void CalibrateGyro() => DxoNative.dxo_calibrate_gyro(_h);
+
+    // ---- diagnostics ----
+    /// Stats plus the most recent report gaps (ms, oldest first) written into `samples`.
+    public DxoTiming GetTiming(float[] samples, out int count)
+    {
+        DxoTiming t;
+        nuint n;
+        fixed (float* p = samples) n = DxoNative.dxo_get_timing(_h, out t, p, (nuint)samples.Length);
+        count = (int)n;
+        return t;
+    }
+
+    public byte[] LastReport()
+    {
+        var buf = new byte[1024];
+        nuint n;
+        fixed (byte* p = buf) n = DxoNative.dxo_get_last_report(_h, p, (nuint)buf.Length);
+        Array.Resize(ref buf, (int)Math.Min(n, (nuint)buf.Length));
+        return buf;
+    }
 
     public void Dispose()
     {
