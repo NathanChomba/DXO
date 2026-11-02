@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 3; // 2: virtual-device controls, 3: profile editor
+pub const DXO_ABI_VERSION: u32 = 4; // 2: virtual-device controls, 3: profile editor, 4: motion
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -115,6 +115,24 @@ pub struct DxoVirtual {
     pub pad_hidden: u8,
     pub virtual_active: u8,
     pub _pad: [u8; 3],
+}
+
+/// Motion page: live readings + gyro feature status (32 bytes).
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DxoMotion {
+    /// calibrated deg/s: pitch, yaw, roll
+    pub gyro_dps: [f32; 3],
+    /// g: x, y, z
+    pub accel_g: [f32; 3],
+    /// 0 uncalibrated, 1 calibrating, 2 calibrated, 3 failed (pad moved)
+    pub cal_state: u8,
+    pub cemu_listening: u8,
+    pub cemu_failed: u8,
+    pub cemu_clients: u8,
+    pub cemu_port: u16,
+    pub mouse_active: u8,
+    pub _pad: u8,
 }
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
@@ -278,6 +296,43 @@ pub unsafe extern "C" fn dxo_reconnect(h: *mut Engine) {
     })
 }
 
+// ---- motion (ABI 4) -------------------------------------------------------
+
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_motion(h: *mut Engine, out: *mut DxoMotion) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(out)) = (engine(h), out.as_mut()) else { return 0 };
+        let m = e.snapshot().motion;
+        *out = DxoMotion {
+            gyro_dps: m.gyro_dps,
+            accel_g: m.accel_g,
+            cal_state: match m.cal_state {
+                crate::gyro::CalState::Uncalibrated => 0,
+                crate::gyro::CalState::Calibrating => 1,
+                crate::gyro::CalState::Calibrated => 2,
+                crate::gyro::CalState::Failed => 3,
+            },
+            cemu_listening: m.cemu_listening as u8,
+            cemu_failed: m.cemu_failed as u8,
+            cemu_clients: m.cemu_clients,
+            cemu_port: m.cemu_port,
+            mouse_active: m.mouse_active as u8,
+            _pad: 0,
+        };
+        1
+    })
+}
+
+/// Measure gyro drift over the next 2 s (controller lying still).
+#[no_mangle]
+pub unsafe extern "C" fn dxo_calibrate_gyro(h: *mut Engine) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.calibrate_gyro();
+        }
+    })
+}
+
 // ---- profile editor (ABI 3) ---------------------------------------------
 // The UI edits profiles as JSON (System.Text.Json); files on disk stay TOML.
 // Rust does every parse/serialise so both sides agree on one schema.
@@ -381,5 +436,6 @@ mod tests {
         assert_eq!(std::mem::size_of::<DxoState>(), 64);
         assert_eq!(std::mem::size_of::<DxoOutput>(), 16);
         assert_eq!(std::mem::size_of::<DxoVirtual>(), 8);
+        assert_eq!(std::mem::size_of::<DxoMotion>(), 32);
     }
 }

@@ -59,6 +59,21 @@ public struct DxoVirtual
     private byte _p0, _p1, _p2;
 }
 
+/// Motion page readings + gyro feature status (ffi.rs DxoMotion, 32 bytes).
+[StructLayout(LayoutKind.Sequential)]
+public struct DxoMotion
+{
+    public float GyroPitch, GyroYaw, GyroRoll;   // calibrated deg/s
+    public float AccelX, AccelY, AccelZ;         // g
+    public byte CalState;      // 0 uncalibrated, 1 calibrating, 2 calibrated, 3 failed
+    public byte CemuListening;
+    public byte CemuFailed;    // switched on but the port couldn't be opened
+    public byte CemuClients;
+    public ushort CemuPort;
+    public byte MouseActive;   // gyro is moving the mouse right now
+    private byte _p0;
+}
+
 /// Bit positions of PadState.buttons (state.rs `Buttons`).
 [Flags]
 public enum DxoButtons : uint
@@ -73,7 +88,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 3;
+    public const uint ExpectedAbi = 4;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -102,6 +117,10 @@ internal static partial class DxoNative
     [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
     public static partial byte dxo_profile_json_to_file(string json, string path);
     [LibraryImport(Dll)] public static partial void dxo_reload_profiles(IntPtr engine);
+
+    // ---- motion (ABI 4) ----
+    [LibraryImport(Dll)] public static partial byte dxo_get_motion(IntPtr engine, out DxoMotion m);
+    [LibraryImport(Dll)] public static partial void dxo_calibrate_gyro(IntPtr engine);
 }
 
 /// Safe, disposable wrapper. One instance for the app's lifetime.
@@ -186,6 +205,16 @@ public sealed unsafe class DxoEngine : IDisposable
 
     /// JSON -> validated TOML file via the engine. False if the JSON was rejected.
     public static bool ProfileJsonToFile(string json, string path) => DxoNative.dxo_profile_json_to_file(json, path) != 0;
+
+    // ---- motion ----
+    public DxoMotion GetMotion()
+    {
+        DxoNative.dxo_get_motion(_h, out var m);
+        return m;
+    }
+
+    /// Measure gyro drift over the next 2 s; the controller should lie still.
+    public void CalibrateGyro() => DxoNative.dxo_calibrate_gyro(_h);
 
     public void Dispose()
     {

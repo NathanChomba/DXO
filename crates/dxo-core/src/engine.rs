@@ -10,7 +10,7 @@
 use crate::device::{self, Device, Kind};
 use crate::error::Result;
 use crate::foreground::Watcher;
-use crate::gyro::{Calibration, CemuHookServer};
+use crate::gyro::{CalState, Calibrator, CemuHookServer, GyroMouse};
 use crate::hidhide::{self, HidHide};
 use crate::mapping;
 use crate::output::{self, OutputState, TriggerEffect};
@@ -38,6 +38,25 @@ pub struct Snapshot {
     pub pad_hidden: bool,
     /// A virtual controller is plugged in for games.
     pub virtual_active: bool,
+    pub motion: MotionStatus,
+}
+
+/// Live motion readings + gyro feature status for the Motion page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MotionStatus {
+    /// Calibrated angular velocity, degrees/second (pitch, yaw, roll).
+    pub gyro_dps: [f32; 3],
+    /// Acceleration in g (x, y, z); about 1 g total at rest.
+    pub accel_g: [f32; 3],
+    pub cal_state: CalState,
+    /// CemuHook server is open on `cemu_port`.
+    pub cemu_listening: bool,
+    /// CemuHook is switched on but the port couldn't be opened (in use?).
+    pub cemu_failed: bool,
+    pub cemu_port: u16,
+    pub cemu_clients: u8,
+    /// Gyro is moving the mouse right now (enabled + hold condition met).
+    pub mouse_active: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +86,8 @@ struct Shared {
     reload_profiles: AtomicBool,
     /// Set if the engine refused to start (e.g. another copy running).
     fatal: AtomicBool,
+    /// UI asked for a manual gyro calibration.
+    calibrate_gyro: AtomicBool,
 }
 
 pub struct Engine {
@@ -85,6 +106,7 @@ impl Engine {
             reconnect: AtomicBool::new(false),
             reload_profiles: AtomicBool::new(false),
             fatal: AtomicBool::new(false),
+            calibrate_gyro: AtomicBool::new(false),
         });
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
@@ -141,6 +163,11 @@ impl Engine {
     /// Re-read the profiles folder (call after saving or deleting a profile).
     pub fn reload_profiles(&self) {
         self.shared.reload_profiles.store(true, Ordering::Release);
+    }
+
+    /// Measure the gyro's drift now (the controller should lie still for 2 s).
+    pub fn calibrate_gyro(&self) {
+        self.shared.calibrate_gyro.store(true, Ordering::Release);
     }
 
     /// True if the engine stopped for good (e.g. another copy of DXO is running).
@@ -223,7 +250,11 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
     let mut fg = Watcher::default();
     let mut last_fg_check = Instant::now();
     let mut cemu: Option<CemuHookServer> = None;
-    let cal = Calibration::default();
+    // (enabled, port) the server was last set up for; rebind only when it changes.
+    let mut cemu_cfg: Option<(bool, u16)> = None;
+    let mut cemu_failed = false;
+    let mut calib = Calibrator::default();
+    let mut gyro_mouse = GyroMouse::default();
 
     let mut live: Option<Live> = None;
     // Device we already restarted after hiding it, so its own reconnect
@@ -267,6 +298,8 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
                     snap.last_error = None;
                     snap.pad_hidden = l.hidden_instance.is_some();
                     snap.virtual_active = l.target != VirtualTarget::None && cfg.enable_virtual;
+                    calib.reset(); // a different pad drifts differently
+                    gyro_mouse = GyroMouse::default();
                     live = Some(l);
                 }
                 Err(e) => {
@@ -294,12 +327,27 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
             }
         }
         let profile = sh.profile.lock().unwrap().clone();
-        if sh.profile_dirty.swap(false, Ordering::AcqRel) {
-            cemu = if profile.gyro.cemuhook_server {
-                CemuHookServer::bind(profile.gyro.cemuhook_port).ok()
-            } else {
-                None
-            };
+        sh.profile_dirty.store(false, Ordering::Release);
+        let want = (profile.gyro.cemuhook_server, profile.gyro.cemuhook_port);
+        if cemu_cfg != Some(want) {
+            cemu_cfg = Some(want);
+            cemu = None; // close the old socket first, or re-binding the same port fails
+            cemu_failed = false;
+            if want.0 {
+                match CemuHookServer::bind(want.1) {
+                    Ok(c) => {
+                        log::info!("CemuHook server on 127.0.0.1:{}", want.1);
+                        cemu = Some(c);
+                    }
+                    Err(e) => {
+                        log::warn!("CemuHook port {}: {e}", want.1);
+                        cemu_failed = true;
+                    }
+                }
+            }
+        }
+        if sh.calibrate_gyro.swap(false, Ordering::AcqRel) {
+            calib.request();
         }
 
         // ---- rebuild the connection when the virtual setup changed ------------
@@ -328,11 +376,27 @@ fn run(sh: Arc<Shared>, cfg: EngineConfig) {
                 if let Err(e) = l.vpad.update(&mapped) {
                     sh.snapshot.lock().unwrap().last_error = Some(e.to_string());
                 }
+                let now = Instant::now();
+                calib.feed(raw.gyro, now);
                 if let Some(c) = cemu.as_mut() {
-                    c.tick(&raw, &cal);
+                    c.tick(&raw, &calib.cal);
+                }
+                let mouse_move = gyro_mouse.step(&profile.gyro, &raw, &calib.cal, now);
+                if let Some((dx, dy)) = mouse_move {
+                    crate::gyro::move_mouse(dx, dy);
                 }
                 rate_count += 1;
                 let mut snap = sh.snapshot.lock().unwrap();
+                snap.motion = MotionStatus {
+                    gyro_dps: calib.cal.gyro_dps(&raw),
+                    accel_g: calib.cal.accel_g(&raw),
+                    cal_state: calib.state,
+                    cemu_listening: cemu.is_some(),
+                    cemu_failed,
+                    cemu_port: profile.gyro.cemuhook_port,
+                    cemu_clients: cemu.as_ref().map_or(0, |c| c.client_count().min(255) as u8),
+                    mouse_active: profile.gyro.to_mouse && crate::gyro::mouse_hold_active(&profile.gyro.mouse_hold, &raw),
+                };
                 snap.raw = raw;
                 snap.mapped = mapped;
                 snap.profile_name = profile.name.clone();

@@ -63,4 +63,10 @@ public sealed class GyroModel
     public ushort CemuhookPort { get; set; } = 26760;
     public bool ToMouse { get; set; }
     public float Sensitivity { get; set; } = 1.0f;
+    /// "" = always, "touch" = finger on touchpad, or a button key ("l2", "r1"...)
+    public string MouseHold { get; set; } = "l2";
+    /// deg/s ignored before the cursor moves (hand tremor)
+    public float MouseDeadzone { get; set; } = 1.0f;
+    public bool InvertX { get; set; }
+    public bool InvertY { get; set; }
 }

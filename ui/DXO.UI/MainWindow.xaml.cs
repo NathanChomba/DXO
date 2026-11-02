@@ -66,7 +66,7 @@ public sealed partial class MainWindow : Window
             case "lighting": Go(typeof(LightingPage)); break;
             case "mappings": Soon("Mappings", "Click a button on the controller diagram, then choose what it does: another button, a key, the mouse, a shortcut, turbo or toggle.", "Milestone 5"); break;
             case "haptics": Soon("Haptics and Rumble", "Rumble intensity, rumble passthrough from games, and audio-driven haptics.", "Milestone 3 (rumble), Milestone 6 (audio haptics)"); break;
-            case "motion": Soon("Motion", "Gyro to mouse or stick, deadzone and sensitivity, and the CemuHook server for emulators.", "Milestone 5"); break;
+            case "motion": Go(typeof(MotionPage)); break;
             case "games": Soon("Games", "Detected games with per-game profiles that switch automatically.", "Milestone 5"); break;
             case "about": Go(typeof(AboutPage)); break;
         }

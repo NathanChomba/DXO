@@ -55,19 +55,37 @@ pub enum VirtualTarget {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GyroConfig {
+    /// DSU/CemuHook motion server for emulators (Cemu, Dolphin, Yuzu forks...).
     pub cemuhook_server: bool,
     pub cemuhook_port: u16,
-    /// M5: gyro -> right stick / mouse
+    /// Turn the controller to move the mouse.
     pub to_mouse: bool,
+    /// Multiplier on DXO's base speed (10 px per degree turned).
     pub sensitivity: f32,
+    /// When gyro aiming is live: "" = always, "touch" = finger on the
+    /// touchpad, or a button name from `mapping::button_from_name` ("l2", "r1"...).
+    pub mouse_hold: String,
+    /// Turning slower than this (degrees/second) is ignored: kills hand tremor.
+    pub mouse_deadzone: f32,
+    pub invert_x: bool,
+    pub invert_y: bool,
 }
 
 impl Default for GyroConfig {
     fn default() -> Self {
-        Self { cemuhook_server: false, cemuhook_port: 26760, to_mouse: false, sensitivity: 1.0 }
+        Self {
+            cemuhook_server: false,
+            cemuhook_port: 26760,
+            to_mouse: false,
+            sensitivity: 1.0,
+            mouse_hold: "l2".into(), // aim-down-sights = gyro aim, the classic setup
+            mouse_deadzone: 1.0,
+            invert_x: false,
+            invert_y: false,
+        }
     }
 }
 

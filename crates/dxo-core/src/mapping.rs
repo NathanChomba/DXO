@@ -75,6 +75,8 @@ pub fn button_from_name(name: &str) -> Option<u32> {
         "start" | "options" => Buttons::START,
         "home" | "ps" | "guide" => Buttons::HOME,
         "touchpad" => Buttons::TOUCHPAD,
+        "l2" | "lt" => Buttons::L2_DIGITAL,
+        "r2" | "rt" => Buttons::R2_DIGITAL,
         "mute" => Buttons::MUTE,
         "up" => Buttons::DPAD_UP,
         "down" => Buttons::DPAD_DOWN,
