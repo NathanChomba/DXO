@@ -22,6 +22,7 @@ public sealed partial class SettingsPage : Page
         StartToggle.IsOn = Autostart.IsEnabled;
         GenericToggle.IsOn = App.Settings.IncludeGeneric;
         NavToggle.IsOn = App.Settings.ControllerNavigation;
+        ChordToggle.IsOn = App.Settings.SystemChords;
         UpdateSourceBox.Text = App.Settings.UpdateSource;
         UpdateToggle.IsOn = App.Settings.CheckUpdatesOnStart;
         UpdateCard.Description = $"You have DXO {App.Version}.";
@@ -98,6 +99,14 @@ public sealed partial class SettingsPage : Page
         if (_loading) return;
         App.Settings.ControllerNavigation = NavToggle.IsOn;
         App.Settings.Save();
+    }
+
+    private void Chord_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.SystemChords = ChordToggle.IsOn;
+        App.Settings.Save();
+        App.Engine?.SetChords(ChordToggle.IsOn);
     }
 
     private void Start_Toggled(object sender, RoutedEventArgs e)

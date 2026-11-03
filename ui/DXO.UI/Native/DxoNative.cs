@@ -129,7 +129,7 @@ public struct DxoNav
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 9;
+    public const uint ExpectedAbi = 10;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -150,6 +150,8 @@ internal static partial class DxoNative
     [LibraryImport(Dll)] public static partial void dxo_set_virtual(IntPtr engine, byte target, byte hidePhysical, byte rumblePassthrough);
     [LibraryImport(Dll)] public static partial void dxo_reconnect(IntPtr engine);
     [LibraryImport(Dll)] public static partial void dxo_set_include_generic(IntPtr engine, byte on);
+    [LibraryImport(Dll)] public static partial void dxo_set_chords(IntPtr engine, byte on);
+    [LibraryImport(Dll)] public static partial byte dxo_take_window_toggle(IntPtr engine);
 
     // ---- multiple controllers (ABI 7) ----
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_list_pads(IntPtr engine, DxoPadInfo* pads, nuint max);
@@ -248,6 +250,8 @@ public sealed unsafe class DxoEngine : IDisposable
 
     /// Also use Switch Pro / generic gamepads (next connect).
     public void SetIncludeGeneric(bool on) => DxoNative.dxo_set_include_generic(_h, (byte)(on ? 1 : 0));
+    public void SetChords(bool on) => DxoNative.dxo_set_chords(_h, (byte)(on ? 1 : 0));
+    public bool TakeWindowToggle() => DxoNative.dxo_take_window_toggle(_h) != 0;
 
     public void Reconnect() => DxoNative.dxo_reconnect(_h);
 

@@ -56,6 +56,10 @@ public sealed class ControllerNavigator
         if (n.Connected == 0) { _prev = 0; _dir = 0; return; }
 
         uint b = n.Buttons;
+        // PS is the chord modifier: while it's held, these buttons drive the
+        // chord layer (volume, screenshot...), not UI navigation. Bow out so we
+        // don't also move focus. (_prev = b so no edge fires when PS releases.)
+        if (App.Settings.SystemChords && (b & (uint)DxoButtons.Home) != 0) { _prev = b; _dir = 0; return; }
         bool Edge(DxoButtons bit) => (b & (uint)bit) != 0 && (_prev & (uint)bit) == 0;
         bool Down(DxoButtons bit) => (b & (uint)bit) != 0;
 

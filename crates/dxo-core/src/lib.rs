@@ -15,6 +15,7 @@ pub mod ffi;
 pub mod foreground;
 pub mod bindings;
 pub mod bluetooth;
+pub mod chords;
 pub mod controllers;
 pub mod gyro;
 pub mod haptics;

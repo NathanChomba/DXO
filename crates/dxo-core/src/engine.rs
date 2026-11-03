@@ -15,6 +15,7 @@
 //! for one controller keep working; `pads()` lists them all.
 
 use crate::bindings::{self, Layers, Runner};
+use crate::chords::Chords;
 use crate::pointer::Pointer;
 use crate::controllers::{effective_profile, ControllerSettings, ControllerStore};
 use crate::device::{self, Device, Kind};
@@ -160,6 +161,10 @@ struct Shared {
     reload_profiles: AtomicBool,
     /// Also look for non-Sony gamepads (Settings > Other controllers).
     include_generic: AtomicBool,
+    /// System chords (hold PS + a button) are active.
+    chords_enabled: AtomicBool,
+    /// A chord asked to show/hide the DXO window; the UI polls and clears this.
+    window_toggle: AtomicBool,
     /// Ask the manager to scan now instead of waiting for its next tick.
     rescan: AtomicBool,
     enable_virtual: bool,
@@ -230,6 +235,8 @@ impl Engine {
             fatal: AtomicBool::new(false),
             reload_profiles: AtomicBool::new(false),
             include_generic: AtomicBool::new(cfg.include_generic),
+            chords_enabled: AtomicBool::new(true),
+            window_toggle: AtomicBool::new(false),
             rescan: AtomicBool::new(true),
             enable_virtual: cfg.enable_virtual,
             pads: (0..MAX_PADS).map(|i| Arc::new(Pad::new(i))).collect(),
@@ -396,6 +403,16 @@ impl Engine {
     }
 
     /// Look for other gamepads too (generic HID / Switch Pro).
+    /// Turn system chords (hold PS + button) on or off.
+    pub fn set_chords(&self, on: bool) {
+        self.shared.chords_enabled.store(on, Ordering::Release);
+    }
+
+    /// Did a chord ask to show/hide the window? Clears the flag.
+    pub fn take_window_toggle(&self) -> bool {
+        self.shared.window_toggle.swap(false, Ordering::AcqRel)
+    }
+
     pub fn set_include_generic(&self, on: bool) {
         self.shared.include_generic.store(on, Ordering::Release);
         self.shared.rescan.store(true, Ordering::Release);
@@ -696,6 +713,7 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     let mut gyro_mouse = GyroMouse::default();
     let mut runner = Runner::default();
     let mut pointer = Pointer::default();
+    let mut chords = Chords::default();
     // This controller's saved settings (lightbar, idle timeout), re-read every second.
     let ctl_id = pad.controller_id.lock().unwrap().clone();
     let read_ctl = || ctl_id.as_deref().and_then(|id| sh.controllers.lock().unwrap().get(id)).unwrap_or_default();
@@ -801,6 +819,22 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
                     }
                 } else {
                     bindings::send(&pointer.release());
+                }
+                // System chords (hold PS + button). Suppresses the combo from the
+                // game, so it runs last, just before the pad state goes out.
+                if sh.chords_enabled.load(Ordering::Acquire) {
+                    let fired = chords.process(&raw, &mut mapped, now);
+                    if fired.power_off {
+                        if let Some(mac) = &bt_mac {
+                            match crate::bluetooth::disconnect(mac) {
+                                Ok(()) => log::info!("player {}: powered off via chord", pad.slot + 1),
+                                Err(e) => log::warn!("chord power-off: {e}"),
+                            }
+                        }
+                    }
+                    if fired.toggle_window {
+                        sh.window_toggle.store(true, Ordering::Release);
+                    }
                 }
                 if let Err(e) = conn.vpad.update(&mapped) {
                     pad.snapshot.lock().unwrap().last_error = Some(e.to_string());
@@ -976,6 +1010,8 @@ mod tests {
             fatal: AtomicBool::new(false),
             reload_profiles: AtomicBool::new(false),
             include_generic: AtomicBool::new(false),
+            chords_enabled: AtomicBool::new(true),
+            window_toggle: AtomicBool::new(false),
             rescan: AtomicBool::new(false),
             enable_virtual: false,
             pads: (0..MAX_PADS).map(|i| Arc::new(Pad::new(i))).collect(),

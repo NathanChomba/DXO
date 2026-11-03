@@ -40,6 +40,11 @@
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="NavToggle" Toggled="Nav_Toggled" />
             </controls:SettingsCard>
+            <controls:SettingsCard Header="Controller shortcuts (chords)"
+                                   Description="Hold PS and press another button: Share powers off the controller, D-pad Up/Down changes volume (Left mutes), Touchpad takes a screenshot, L3 shows/hides this window. A quick PS tap still works normally. Works even while you're in a game.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEDA7;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="ChordToggle" Toggled="Chord_Toggled" />
+            </controls:SettingsCard>
 
             <TextBlock Text="Animations" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Window animation scale" Description="The controller card growing out of a pill and closing again.">

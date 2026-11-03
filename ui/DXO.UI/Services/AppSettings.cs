@@ -18,6 +18,8 @@ public sealed class AppSettings
     public bool IncludeGeneric { get; set; }
     /// Drive the DXO window with the controller (focus, invoke, scroll) while it's in front.
     public bool ControllerNavigation { get; set; } = true;
+    /// System chords: hold PS + a button for power-off, volume, screenshot, show/hide.
+    public bool SystemChords { get; set; } = true;
 
     // Animation speed, like Android's developer options: 0 = off, 1 = normal,
     // 0.5 = twice as fast, 2 = twice as slow.

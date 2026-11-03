@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 9; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav)
+pub const DXO_ABI_VERSION: u32 = 10; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav), 10: system chords
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -395,6 +395,22 @@ pub unsafe extern "C" fn dxo_set_include_generic(h: *mut Engine, on: u8) {
             e.set_include_generic(on != 0);
         }
     })
+}
+
+/// Turn system chords (hold PS + a button) on or off. ABI 10.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_chords(h: *mut Engine, on: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.set_chords(on != 0);
+        }
+    })
+}
+
+/// 1 if a chord asked to show/hide the DXO window since the last call. ABI 10.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_take_window_toggle(h: *mut Engine) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.take_window_toggle() as u8))
 }
 
 /// Unhide, unplug the virtual pad, reconnect and hide again.

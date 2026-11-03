@@ -87,6 +87,13 @@ public sealed partial class MainWindow : Window
         Activate();
     }
 
+    /// PS + L3 chord: pull DXO up from the tray, or tuck it back.
+    public void ToggleWindow()
+    {
+        if (AppWindow.IsVisible) HideToTray();
+        else ShowFromTray();
+    }
+
     /// Really quit: close the window for good (App disposes the engine, which unhides the pad).
     public void ExitApp()
     {
@@ -102,6 +109,7 @@ public sealed partial class MainWindow : Window
         Bindings.Update();
         Device.PropertyChanged += OnDeviceChanged;
         Device.PadsChanged += OnPadsChanged;
+        Device.WindowToggleRequested += ToggleWindow;
         Nav.SelectedItem = Nav.MenuItems[0];
         VersionText.Text = $"v{App.Version}";
         Root.Loaded += OnFirstShown;

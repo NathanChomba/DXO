@@ -99,6 +99,7 @@ public partial class App : Application
                 bool virt = Environment.GetEnvironmentVariable("DXO_NO_VIRTUAL") != "1";
                 Engine = new DxoEngine(ProfilesDir, virt);
                 if (Settings.IncludeGeneric) Engine.SetIncludeGeneric(true);
+                Engine.SetChords(Settings.SystemChords);
             }
             catch (Exception ex) when (ex is DllNotFoundException or InvalidOperationException or EntryPointNotFoundException)
             {

@@ -51,6 +51,8 @@ public partial class DeviceViewModel : ObservableObject
 
     /// Raw state for the controller visualizer; raised every refresh (~30 Hz).
     public event Action<DxoState>? StateUpdated;
+    /// A PS + L3 chord asked to show/hide the window.
+    public event Action? WindowToggleRequested;
     /// Engine device kind (1 DS4, 2 DualSense, 3 Edge, 4 generic) for picking a skin.
     public byte Kind { get; private set; }
 
@@ -67,6 +69,8 @@ public partial class DeviceViewModel : ObservableObject
     {
         var e = App.Engine;
         if (e is null) return;
+
+        if (e.TakeWindowToggle()) WindowToggleRequested?.Invoke(); // PS + L3
 
         if (_padTick++ % 8 == 0) RefreshPads(e); // ~4 times a second
 
