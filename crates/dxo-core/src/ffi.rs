@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 8; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings
+pub const DXO_ABI_VERSION: u32 = 9; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav)
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -277,6 +277,40 @@ pub unsafe extern "C" fn dxo_get_state(h: *mut Engine, out: *mut DxoState) -> u8
             touch1_x: m.touch[1].x,
             touch1_y: m.touch[1].y,
             ..Default::default()
+        };
+        s.connected as u8
+    })
+}
+
+/// Raw input for driving DXO's own UI (controller navigation). Raw = before
+/// profile remaps, so a mapping can never break navigation. ABI 9.
+#[repr(C)]
+pub struct DxoNav {
+    pub buttons: u32,
+    pub lx: f32,
+    pub ly: f32,
+    pub rx: f32,
+    pub ry: f32,
+    pub connected: u8,
+    pub _pad: [u8; 3],
+}
+
+/// Latest RAW buttons and sticks of the selected pad, for in-app navigation.
+/// Returns 1 if a pad is connected.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_nav(h: *mut Engine, out: *mut DxoNav) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(out)) = (engine(h), out.as_mut()) else { return 0 };
+        let s = e.snapshot();
+        let r = s.raw;
+        *out = DxoNav {
+            buttons: r.buttons.0,
+            lx: r.lx,
+            ly: r.ly,
+            rx: r.rx,
+            ry: r.ry,
+            connected: s.connected as u8,
+            _pad: [0; 3],
         };
         s.connected as u8
     })

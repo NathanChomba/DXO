@@ -35,6 +35,16 @@ public partial class PadViewModel : ObservableObject
     /// Light colour needs re-reading (new controller in this slot, profile or setting changed).
     public bool LightStale { get; set; } = true;
 
+    /// Accent ring when this is the controller being edited, else none.
+    /// Used by the Profiles-page controller strip to show the selection.
+    public Microsoft.UI.Xaml.Media.Brush SelectionBrush => IsSelected
+        ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["DxoAccent"]
+        : Transparent;
+
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush Transparent = new(Microsoft.UI.Colors.Transparent);
+
+    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(SelectionBrush));
+
     public PadViewModel(int slot) => Slot = slot;
 
     public void Update(PadInfo p)

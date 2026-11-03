@@ -16,6 +16,8 @@ public sealed class AppSettings
     public bool MinimizeToTray { get; set; }
     /// Also use Switch Pro and generic USB/Bluetooth gamepads (experimental).
     public bool IncludeGeneric { get; set; }
+    /// Drive the DXO window with the controller (focus, invoke, scroll) while it's in front.
+    public bool ControllerNavigation { get; set; } = true;
 
     // Animation speed, like Android's developer options: 0 = off, 1 = normal,
     // 0.5 = twice as fast, 2 = twice as slow.

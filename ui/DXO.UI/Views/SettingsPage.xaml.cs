@@ -21,6 +21,7 @@ public sealed partial class SettingsPage : Page
         MinToggle.IsOn = App.Settings.MinimizeToTray;
         StartToggle.IsOn = Autostart.IsEnabled;
         GenericToggle.IsOn = App.Settings.IncludeGeneric;
+        NavToggle.IsOn = App.Settings.ControllerNavigation;
         UpdateSourceBox.Text = App.Settings.UpdateSource;
         UpdateToggle.IsOn = App.Settings.CheckUpdatesOnStart;
         UpdateCard.Description = $"You have DXO {App.Version}.";
@@ -90,6 +91,13 @@ public sealed partial class SettingsPage : Page
         App.Settings.IncludeGeneric = GenericToggle.IsOn;
         App.Settings.Save();
         App.Engine?.SetIncludeGeneric(GenericToggle.IsOn);
+    }
+
+    private void Nav_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.ControllerNavigation = NavToggle.IsOn;
+        App.Settings.Save();
     }
 
     private void Start_Toggled(object sender, RoutedEventArgs e)

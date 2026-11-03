@@ -6,7 +6,8 @@
     xmlns:vm="using:DXO.UI.ViewModels"
     Title="DXO">
 
-    <Grid x:Name="Root" Background="{StaticResource DxoWindowBackground}" KeyDown="Root_KeyDown">
+    <Grid x:Name="Root" Background="{StaticResource DxoWindowBackground}" KeyDown="Root_KeyDown"
+          XYFocusKeyboardNavigation="Enabled">
         <Grid.RowDefinitions>
             <RowDefinition Height="40" />
             <RowDefinition Height="Auto" />
@@ -23,8 +24,9 @@
 
         </Grid>
 
-        <!-- ===== Controller bar: one pill per connected controller ===== -->
-        <Grid Grid.Row="1" Padding="14,2,14,10" ColumnSpacing="12">
+        <!-- ===== Controller bar: one pill per connected controller =====
+             Slides away on the Profiles page, which shows its own strip. -->
+        <Grid x:Name="TopBar" Grid.Row="1" Padding="14,2,14,10" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

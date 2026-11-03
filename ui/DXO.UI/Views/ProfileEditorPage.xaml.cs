@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
@@ -26,18 +27,76 @@ public sealed partial class ProfileEditorPage : Page
         _loading = false;
     }
 
+    private static MainWindow? Main => ((App)Application.Current).MainWindowRef as MainWindow;
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         if (e.Parameter is string tab) LastTab = tab;
         ShowTab(LastTab);
+
+        // The controller strip stands in for the top bar here.
+        PadStrip.ItemsSource = App.Device.Pads;
+        App.Device.PadsChanged += OnPadsChanged;
+        Main?.SetTopBarHidden(true);
+        AnimateStripIn();
+        UpdateHeader();
     }
 
     /// Leaving the Profiles page: the tab's page must get its OnNavigatedFrom too,
     /// or its timers and device events keep running in the background.
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        App.Device.PadsChanged -= OnPadsChanged;
+        Main?.SetTopBarHidden(false);
         Inner.Navigate(typeof(Page), null, new SuppressNavigationTransitionInfo());
         Inner.BackStack.Clear();
+    }
+
+    // ===== controller strip =====
+
+    private void OnPadsChanged() => UpdateHeader();
+
+    /// Single-click a pill: edit that controller's profile.
+    private void StripPill_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is PadViewModel pad)
+        {
+            App.Device.SelectPad(pad.Slot); // pages follow the selected controller
+            UpdateHeader();
+        }
+    }
+
+    /// Double-click a pill: open its details card (rename, emulate-as, colour...).
+    private void StripPill_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.DataContext is PadViewModel pad)
+            Main?.OpenControllerCard(pad, el);
+    }
+
+    /// Slide + fade the strip down from the top bar's position.
+    private void AnimateStripIn()
+    {
+        StripHost.Opacity = 1;
+        StripShift.Y = 0;
+        if (App.Settings.TransitionAnimationScale <= 0 || App.Device.Pads.Count == 0) return;
+
+        // A positional glide needs a readable duration; the global "snappy" scale
+        // (0.3x) makes it pop, so floor it. One gentle ease, one direction: it
+        // drops into place from where the top bar was.
+        double ms = Math.Max(240, 260 * App.Settings.TransitionAnimationScale);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        StripHost.Opacity = 0;
+        StripShift.Y = -16;
+        var sb = new Storyboard();
+        var fade = new DoubleAnimation { From = 0, To = 1, Duration = TimeSpan.FromMilliseconds(ms), EasingFunction = ease };
+        Storyboard.SetTarget(fade, StripHost);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        var move = new DoubleAnimation { From = -16, To = 0, Duration = TimeSpan.FromMilliseconds(ms), EasingFunction = ease };
+        Storyboard.SetTarget(move, StripShift);
+        Storyboard.SetTargetProperty(move, "Y");
+        sb.Children.Add(fade);
+        sb.Children.Add(move);
+        sb.Begin();
     }
 
     /// Select a tab by tag (library, buttons, mouse, motion, rumble, triggers, lighting).
@@ -46,6 +105,16 @@ public sealed partial class ProfileEditorPage : Page
         var item = Tabs.Items.FirstOrDefault(i => (string)i.Tag == tag) ?? Tabs.Items[0];
         if (Tabs.SelectedItem == item) { Open(tag); return; }
         Tabs.SelectedItem = item; // fires Tabs_SelectionChanged -> Open
+    }
+
+    /// Bumper flip between tabs (called by controller navigation).
+    public void CycleTab(int step)
+    {
+        int n = Tabs.Items.Count;
+        if (n == 0) return;
+        int i = Tabs.Items.IndexOf(Tabs.SelectedItem);
+        if (i < 0) i = 0;
+        Tabs.SelectedItem = Tabs.Items[((i + step) % n + n) % n];
     }
 
     /// The selected controller changed: show the new one's profile.
@@ -119,6 +188,6 @@ public sealed partial class ProfileEditorPage : Page
         EditingDot.Background = new SolidColorBrush(ControllerModel.PlayerColours[slot]);
         EditingText.Text = LastTab == "library"
             ? $"All your saved profiles. {pad.PlayerText} ({pad.Name}) is using \"{profile}\"."
-            : $"Editing \"{profile}\", the profile {pad.PlayerText} ({pad.Name}) is using right now. Pick another controller in the bar above to edit its profile.";
+            : $"Editing \"{profile}\", the profile {pad.PlayerText} ({pad.Name}) is using right now. Click another controller above to edit its profile; double-click one for its details.";
     }
 }

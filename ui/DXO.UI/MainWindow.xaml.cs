@@ -6,6 +6,9 @@ using System.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Composition;
@@ -102,7 +105,13 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = Nav.MenuItems[0];
         VersionText.Text = $"v{App.Version}";
         Root.Loaded += OnFirstShown;
+
+        // Drive DXO with the controller while its window is in front.
+        _nav = new ControllerNavigator(this, DispatcherQueue);
+        Activated += (_, e) => _nav?.SetWindowActive(e.WindowActivationState != WindowActivationState.Deactivated);
     }
+
+    private ControllerNavigator? _nav;
 
     /// Once the window is on screen: first-run setup, then the update check.
     private async void OnFirstShown(object sender, RoutedEventArgs e)
@@ -503,6 +512,98 @@ public sealed partial class MainWindow : Window
 
     public void OpenSettings() => Nav.SelectedItem = Nav.SettingsItem;
 
+    // ===== Profiles page: its own controller strip replaces the top bar =====
+
+    private bool _topHidden;
+
+    /// Profiles draws its own controller strip, so the global bar is removed
+    /// while it's on screen. Done instantly at the page switch — hidden under
+    /// the page transition — so there's no mid-animation layout jump.
+    public void SetTopBarHidden(bool hidden)
+    {
+        if (_topHidden == hidden) return;
+        _topHidden = hidden;
+        TopBar.Opacity = 1;
+        TopBar.Visibility = hidden ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// Open the controller card anchored to a pill in the Profiles strip
+    /// (double-click). Mirrors clicking a pill in the top bar.
+    public void OpenControllerCard(PadViewModel pad, FrameworkElement anchor)
+    {
+        if (_cardOpen && _cardPad == pad) { CloseCard(); return; }
+        Device.SelectPad(pad.Slot);
+        OpenCard(pad, anchor);
+    }
+
+    // ===== controller navigation: actions the ControllerNavigator calls =====
+
+    /// Move keyboard/gamepad focus. The first press with nothing focused just
+    /// grabs focus so you can see where you are.
+    public void NavDirection(FocusNavigationDirection dir)
+    {
+        if (EnsureFocus()) return;
+        FocusManager.TryMoveFocus(dir, new FindNextElementOptions { SearchRoot = Root });
+    }
+
+    private bool EnsureFocus()
+    {
+        if (FocusManager.GetFocusedElement(Root.XamlRoot) is Control) return false;
+        var first = FocusManager.FindFirstFocusableElement(ContentFrame) ?? FocusManager.FindFirstFocusableElement(Root);
+        if (first is Control c) { c.Focus(FocusState.Keyboard); return true; }
+        return false;
+    }
+
+    /// Cross / A: activate the focused control (button, toggle, list item, combo).
+    public void NavActivate()
+    {
+        if (FocusManager.GetFocusedElement(Root.XamlRoot) is not FrameworkElement el) return;
+        var peer = FrameworkElementAutomationPeer.FromElement(el) ?? FrameworkElementAutomationPeer.CreatePeerForElement(el);
+        if (peer is null) return;
+        if (peer.GetPattern(PatternInterface.Invoke) is IInvokeProvider inv) inv.Invoke();
+        else if (peer.GetPattern(PatternInterface.Toggle) is IToggleProvider tog) tog.Toggle();
+        else if (peer.GetPattern(PatternInterface.SelectionItem) is ISelectionItemProvider sel) sel.Select();
+        else if (peer.GetPattern(PatternInterface.ExpandCollapse) is IExpandCollapseProvider ec)
+        {
+            if (ec.ExpandCollapseState == ExpandCollapseState.Expanded) ec.Collapse(); else ec.Expand();
+        }
+    }
+
+    /// Circle / B: close the controller card, else bounce focus to the menu.
+    public void NavBack()
+    {
+        if (_cardOpen) { CloseCard(); return; }
+        if (Nav.SelectedItem is Control sc) sc.Focus(FocusState.Keyboard);
+    }
+
+    /// Bumpers: previous/next tab on Profiles, otherwise previous/next page.
+    public void NavCycle(int step)
+    {
+        if (ContentFrame.Content is ProfileEditorPage editor) { editor.CycleTab(step); return; }
+        var items = Nav.MenuItems.OfType<NavigationViewItem>().ToList();
+        if (items.Count == 0) return;
+        int i = items.IndexOf(Nav.SelectedItem as NavigationViewItem);
+        if (i < 0) i = 0;
+        Nav.SelectedItem = items[((i + step) % items.Count + items.Count) % items.Count];
+    }
+
+    public void NavTogglePane() => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+
+    public void NavHome() => Select("home");
+
+    /// Right stick: scroll the focused list.
+    public void NavScroll(double dy)
+    {
+        if (FocusManager.GetFocusedElement(Root.XamlRoot) is DependencyObject d && FindScroll(d) is ScrollViewer sv)
+            sv.ChangeView(null, sv.VerticalOffset + dy, null, true);
+    }
+
+    private static ScrollViewer? FindScroll(DependencyObject? d)
+    {
+        while (d is not null and not ScrollViewer) d = VisualTreeHelper.GetParent(d);
+        return d as ScrollViewer;
+    }
+
     /// Old page tags that are now tabs of the Profiles page.
     private static readonly Dictionary<string, string> EditorTabs = new()
     {
@@ -553,7 +654,10 @@ public sealed partial class MainWindow : Window
         double k = App.Settings.TransitionAnimationScale;
         if (k <= 0 || ContentFrame.Content is not UIElement el) return;
 
-        var slide = new TranslateTransform { Y = 14 };
+        // Profiles has its own strip drop (and in the opposite direction), so it
+        // gets a fade only — no page slide fighting the strip.
+        bool slidePage = page != typeof(ProfileEditorPage);
+        var slide = new TranslateTransform { Y = slidePage ? 14 : 0 };
         el.RenderTransform = slide;
         el.Opacity = 0;
         var sb = new Storyboard();
@@ -564,15 +668,18 @@ public sealed partial class MainWindow : Window
         };
         Storyboard.SetTarget(fade, el);
         Storyboard.SetTargetProperty(fade, "Opacity");
-        var move = new DoubleAnimation
-        {
-            From = 14, To = 0, Duration = TimeSpan.FromMilliseconds(320 * k),
-            EasingFunction = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 5 },
-        };
-        Storyboard.SetTarget(move, slide);
-        Storyboard.SetTargetProperty(move, "Y");
         sb.Children.Add(fade);
-        sb.Children.Add(move);
+        if (slidePage)
+        {
+            var move = new DoubleAnimation
+            {
+                From = 14, To = 0, Duration = TimeSpan.FromMilliseconds(320 * k),
+                EasingFunction = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 5 },
+            };
+            Storyboard.SetTarget(move, slide);
+            Storyboard.SetTargetProperty(move, "Y");
+            sb.Children.Add(move);
+        }
         sb.Begin();
     }
 

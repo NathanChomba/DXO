@@ -116,10 +116,20 @@ public enum DxoButtons : uint
     L2 = 1 << 17, R2 = 1 << 18, PaddleL = 1 << 19, PaddleR = 1 << 20,
 }
 
+/// Raw buttons/sticks of the selected pad for in-app controller navigation (ffi.rs DxoNav).
+[StructLayout(LayoutKind.Sequential)]
+public struct DxoNav
+{
+    public uint Buttons;        // RAW physical buttons (DxoButtons bits), before profile remaps
+    public float Lx, Ly, Rx, Ry;
+    public byte Connected;      // 0 = no pad / engine stopped
+    private byte _p0, _p1, _p2;
+}
+
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 8;
+    public const uint ExpectedAbi = 9;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -128,6 +138,7 @@ internal static partial class DxoNative
 
     [LibraryImport(Dll)] public static partial void dxo_destroy(IntPtr engine);
     [LibraryImport(Dll)] public static partial byte dxo_get_state(IntPtr engine, out DxoState state);
+    [LibraryImport(Dll)] public static partial byte dxo_get_nav(IntPtr engine, out DxoNav nav);
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_product_name(IntPtr engine, byte* buf, nuint len);
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_last_error(IntPtr engine, byte* buf, nuint len);
     [LibraryImport(Dll)] public static unsafe partial void dxo_set_output(IntPtr engine, DxoOutput* output);
@@ -187,6 +198,13 @@ public sealed unsafe class DxoEngine : IDisposable
     {
         DxoNative.dxo_get_state(_h, out var s);
         return s;
+    }
+
+    /// Raw buttons/sticks of the selected pad, for driving DXO's own UI.
+    public DxoNav GetNav()
+    {
+        DxoNative.dxo_get_nav(_h, out var n);
+        return n;
     }
 
     public string ProductName => ReadString(DxoNative.dxo_get_product_name);

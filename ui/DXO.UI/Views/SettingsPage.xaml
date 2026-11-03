@@ -35,6 +35,11 @@
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="GenericToggle" Toggled="Generic_Toggled" />
             </controls:SettingsCard>
+            <controls:SettingsCard Header="Control DXO with your controller"
+                                   Description="Move around this app with the D-pad or left stick. Cross/A selects, Circle/B goes back, the bumpers flip pages, Options shows the menu, the right stick scrolls. Works even when the controller isn't emulated; only active while DXO is the window in front.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="NavToggle" Toggled="Nav_Toggled" />
+            </controls:SettingsCard>
 
             <TextBlock Text="Animations" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Window animation scale" Description="The controller card growing out of a pill and closing again.">
