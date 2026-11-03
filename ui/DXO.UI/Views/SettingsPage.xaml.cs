@@ -9,7 +9,7 @@ namespace DXO.UI.Views;
 
 public sealed partial class SettingsPage : Page
 {
-    private const string HidHideCli = @"C:\Program Files\Nefarius Software Solutions\HidHide\x64\HidHideCLI.exe";
+    private const string HidHideCli = SetupCheck.HidHideCli;
 
     private bool _loading;
 
@@ -21,6 +21,9 @@ public sealed partial class SettingsPage : Page
         MinToggle.IsOn = App.Settings.MinimizeToTray;
         StartToggle.IsOn = Autostart.IsEnabled;
         GenericToggle.IsOn = App.Settings.IncludeGeneric;
+        UpdateSourceBox.Text = App.Settings.UpdateSource;
+        UpdateToggle.IsOn = App.Settings.CheckUpdatesOnStart;
+        UpdateCard.Description = $"You have DXO {App.Version}.";
         foreach (var box in new[] { WindowScaleBox, TransitionScaleBox, AnimatorScaleBox })
             box.ItemsSource = AppSettings.ScaleLabels;
         WindowScaleBox.SelectedIndex = ScaleIndex(App.Settings.WindowAnimationScale);
@@ -117,6 +120,45 @@ public sealed partial class SettingsPage : Page
             ? "Turn this off and on again to switch to the administrator startup (needed to hide your controller)."
             : "Starts without administrator rights, so your controller won't be hidden at sign-in. Turn this on while DXO runs as administrator to fix that.";
         else StartNote.Text = Autostart.IsElevated ? "" : "Tip: turn this on while DXO runs as administrator, so it can also hide your controller at sign-in.";
+    }
+
+    private async void RunSetup_Click(object sender, RoutedEventArgs e)
+    {
+        try { await SetupCheck.ShowAsync(XamlRoot); }
+        catch (Exception ex) { App.LogCrash("RunSetup", ex); }
+    }
+
+    private void UpdateSource_LostFocus(object sender, RoutedEventArgs e)
+    {
+        App.Settings.UpdateSource = UpdateSourceBox.Text.Trim();
+        App.Settings.Save();
+    }
+
+    private void UpdateToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.CheckUpdatesOnStart = UpdateToggle.IsOn;
+        App.Settings.Save();
+    }
+
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateSource_LostFocus(sender, e);
+        CheckButton.IsEnabled = false;
+        UpdateCard.Description = "Checking...";
+        try
+        {
+            var (rel, err) = await Updater.CheckAsync(App.Settings.UpdateSource);
+            if (err is not null) UpdateCard.Description = err;
+            else if (rel is null) UpdateCard.Description = $"You have the latest version ({App.Version}).";
+            else
+            {
+                UpdateCard.Description = $"DXO {rel.Version} is available.";
+                if (((App)Application.Current).MainWindowRef is MainWindow w) await w.OfferUpdate(rel);
+            }
+        }
+        catch (Exception ex) { App.LogCrash("CheckUpdates", ex); UpdateCard.Description = "Couldn't check."; }
+        finally { CheckButton.IsEnabled = true; }
     }
 
     private void OpenProfiles_Click(object sender, RoutedEventArgs e)

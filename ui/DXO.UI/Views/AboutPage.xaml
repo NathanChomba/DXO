@@ -7,7 +7,7 @@
         <TextBlock Text="About DXO" Style="{StaticResource DxoPageTitle}" />
         <Border Style="{StaticResource DxoCard}">
             <StackPanel Spacing="6">
-                <TextBlock Text="DXO v0.1" FontWeight="SemiBold" />
+                <TextBlock x:Name="VersionText" Text="DXO" FontWeight="SemiBold" />
                 <TextBlock Text="Open-source controller mapper for DualSense, DualSense Edge, DualShock 4 and generic gamepads." Style="{StaticResource DxoCaption}" />
                 <TextBlock Text="No ads, no account, no telemetry. Everything runs on your PC." Style="{StaticResource DxoCaption}" />
             </StackPanel>

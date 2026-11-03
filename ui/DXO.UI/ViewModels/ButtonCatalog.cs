@@ -5,6 +5,7 @@ namespace DXO.UI.ViewModels;
 
 public sealed record KeyLabel(string Key, string Label);
 public sealed record VkLabel(ushort Vk, string Label);
+public sealed record PressChoice(string Label, PressModel Press);
 
 /// Names shared by the Mappings page and the Profiles editor. Button keys are
 /// the engine's (mapping.rs `button_from_name`); key codes are Windows virtual keys.
@@ -70,6 +71,9 @@ public static class ButtonCatalog
             "key" => b.Action.Vk is ushort vk ? $"{KeyName(vk)} key" : null,
             "mouse" => MouseLabel(b.Action.Button),
             "disabled" => "Nothing (disabled)",
+            "macro" => b.Action.Steps is { Count: > 0 } st
+                ? $"Macro, {st.Count} step{(st.Count == 1 ? "" : "s")}{(b.Action.Repeat == true ? ", repeats" : "")}"
+                : null,
             _ => null,
         };
         var extras = new List<string>();
@@ -79,6 +83,21 @@ public static class ButtonCatalog
         what ??= "Itself";
         return extras.Count == 0 ? what : $"{what} ({string.Join(", ", extras)})";
     }
+
+    /// Everything a macro step can press, for the step pickers.
+    public static readonly PressChoice[] Presses = BuildPresses();
+
+    private static PressChoice[] BuildPresses()
+    {
+        var l = new List<PressChoice>();
+        l.AddRange(Keys.Select(k => new PressChoice($"{k.Label} key", new PressModel { Type = "key", Vk = k.Vk })));
+        l.AddRange(Buttons.Select(b => new PressChoice($"Pad: {b.Label}", new PressModel { Type = "button", To = b.Key })));
+        l.AddRange(Mouse.Select(m => new PressChoice($"Mouse: {m.Label}", new PressModel { Type = "mouse", Button = m.Key })));
+        return l.ToArray();
+    }
+
+    public static PressChoice? Find(PressModel p) => Presses.FirstOrDefault(c =>
+        c.Press.Type == p.Type && c.Press.Vk == p.Vk && c.Press.To == p.To && c.Press.Button == p.Button);
 
     /// Short summary of a profile's mappings for the Profiles editor.
     public static string Summary(ProfileModel m)

@@ -68,12 +68,14 @@
 
             <!-- ===== What's new ===== -->
             <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                      Background="{StaticResource DxoSurface}" Header="What's new in DXO v0.1">
+                      Background="{StaticResource DxoSurface}" Header="What's new in DXO v0.2">
                 <StackPanel Spacing="4">
-                    <TextBlock Text="• Reads DualSense, DualSense Edge and DualShock 4 over USB and Bluetooth" />
-                    <TextBlock Text="• Virtual Xbox 360 controller with the real pad hidden from games" />
-                    <TextBlock Text="• Lightbar, rumble and adaptive-trigger control" />
-                    <TextBlock Text="• Profiles that switch automatically per game" />
+                    <TextBlock Text="• Up to four controllers, each with its own name, emulation and game profiles" TextWrapping="Wrap" />
+                    <TextBlock Text="• Player colours on the light bar, or your own colour per controller" TextWrapping="Wrap" />
+                    <TextBlock Text="• Macros, a shift layer (hold PS for a second set of mappings), touchpad and stick as mouse" TextWrapping="Wrap" />
+                    <TextBlock Text="• Bluetooth controllers turn off when left idle" TextWrapping="Wrap" />
+                    <TextBlock Text="• Everything a profile holds is now on one Profiles page with tabs" TextWrapping="Wrap" />
+                    <TextBlock Text="• Runs as administrator by itself: no admin terminal needed" TextWrapping="Wrap" />
                 </StackPanel>
             </Expander>
         </StackPanel>

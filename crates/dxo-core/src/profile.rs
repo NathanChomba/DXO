@@ -118,8 +118,14 @@ pub struct Profile {
     /// Controller speaker + headset volume, 0..=100.
     pub audio_volume: u8,
     pub gyro: GyroConfig,
-    /// Disconnect a Bluetooth pad after this many idle minutes (0 = never). M6.
-    pub idle_disconnect_min: u32,
+    /// Hold this button (e.g. "ps") for a second set of bindings. "" = off.
+    /// A quick tap on its own still reaches the game.
+    pub shift_button: String,
+    /// Bindings used while the shift button is held. Buttons not listed here
+    /// keep their normal binding.
+    pub shift_bindings: Vec<crate::bindings::Binding>,
+    /// Touchpad and stick as mouse.
+    pub mouse: crate::pointer::MouseConfig,
 }
 
 impl Default for Profile {
@@ -142,7 +148,9 @@ impl Default for Profile {
             controller_audio: false,
             audio_volume: 70,
             gyro: GyroConfig::default(),
-            idle_disconnect_min: 15,
+            shift_button: String::new(),
+            shift_bindings: vec![],
+            mouse: Default::default(),
         }
     }
 }

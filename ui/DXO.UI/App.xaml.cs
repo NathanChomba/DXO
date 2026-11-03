@@ -18,6 +18,9 @@ public partial class App : Application
 
     public static AppSettings Settings { get; } = AppSettings.Load();
 
+    /// "0.2.0", from <Version> in DXO.UI.csproj.
+    public static string Version { get; } = typeof(App).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "0.0.0";
+
     /// Held for the app's lifetime: one DXO window at a time.
     private static System.Threading.Mutex? _instance;
 
@@ -82,6 +85,10 @@ public partial class App : Application
                 Environment.Exit(0);
                 return;
             }
+            // DXO always runs as administrator (app.manifest) and Windows won't start such
+            // an app from the Run key at sign-in: keep "Start with Windows" a task pointing here.
+            System.Threading.Tasks.Task.Run(Autostart.RefreshIfMoved);
+
             // Started at sign-in: stay in the tray, no window.
             bool toTray = Array.Exists(Environment.GetCommandLineArgs(), a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
 

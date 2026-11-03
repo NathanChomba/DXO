@@ -130,6 +130,13 @@ public partial class DeviceViewModel : ObservableObject
                 changed = true;
             }
             vm.Update(p);
+            if (vm.LightStale)
+            {
+                vm.LightStale = false;
+                ControllerModel? c = null;
+                try { c = ControllerModel.FromJson(e.ControllerJson(p.Slot)); } catch { }
+                vm.LightBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(ControllerModel.LightColour(c, p.Slot, p.Profile));
+            }
         }
         int sel = e.SelectedPad;
         if (sel != _lastSelected) { _lastSelected = sel; changed = true; }

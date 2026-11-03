@@ -11,6 +11,6 @@ try {
     dotnet build ui\DXO.UI\DXO.UI.csproj -c Release -p:Platform=x64
     if ($Run) {
         $exe = Get-ChildItem -Recurse ui\DXO.UI\bin\x64\Release -Filter DXO.UI.exe | Select-Object -First 1
-        & $exe.FullName
+        Start-Process $exe.FullName  # DXO asks for admin rights itself (UAC prompt)
     }
 } finally { Pop-Location }

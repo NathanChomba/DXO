@@ -18,6 +18,9 @@
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xED1A;" /></controls:SettingsCard.HeaderIcon>
                 <TextBlock x:Name="HidHideStatus" Style="{StaticResource DxoValue}" />
             </controls:SettingsCard>
+            <controls:SettingsCard Header="Run setup" Description="Check the drivers and connect a controller, step by step." IsClickEnabled="True" Click="RunSetup_Click">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9D5;" /></controls:SettingsCard.HeaderIcon>
+            </controls:SettingsCard>
 
             <TextBlock Text="Safety" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Unhide all controllers"
@@ -63,6 +66,21 @@
             </controls:SettingsCard>
             <controls:SettingsCard Header="Profiles folder" Description="Where your profile TOML files live." IsClickEnabled="True" Click="OpenProfiles_Click">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B7;" /></controls:SettingsCard.HeaderIcon>
+            </controls:SettingsCard>
+
+            <TextBlock Text="Updates" Style="{StaticResource DxoSectionTitle}" />
+            <controls:SettingsCard Header="Look for updates at"
+                                   Description="A public GitHub repo (owner/name), or the https address of a JSON file with version and url.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE774;" /></controls:SettingsCard.HeaderIcon>
+                <TextBox x:Name="UpdateSourceBox" Width="280" PlaceholderText="owner/repo or https://..." LostFocus="UpdateSource_LostFocus" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Check when DXO starts">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE895;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="UpdateToggle" Toggled="UpdateToggle_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard x:Name="UpdateCard" Header="Check now">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72C;" /></controls:SettingsCard.HeaderIcon>
+                <Button x:Name="CheckButton" Content="Check for updates" Click="CheckUpdates_Click" />
             </controls:SettingsCard>
         </StackPanel>
     </ScrollViewer>

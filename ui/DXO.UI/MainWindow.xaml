@@ -18,7 +18,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <!-- DXO wordmark (Assets\dxo-logo.png, white line art) -->
                 <Image x:Name="TitleLogo" Height="15" Stretch="Uniform" VerticalAlignment="Center" />
-                <TextBlock Text="v0.1" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
+                <TextBlock x:Name="VersionText" Text="v0.2" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
             </StackPanel>
 
         </Grid>
@@ -46,8 +46,8 @@
                                     ToolTipService.ToolTip="{x:Bind PlayerText, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Name, Mode=OneWay}">
                                 <StackPanel Orientation="Horizontal" Spacing="9">
-                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                                             Fill="{StaticResource DxoSuccess}" />
+                                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                             Fill="{x:Bind LightBrush, Mode=OneWay}" />
                                     <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
                                     <TextBlock Text="|" Foreground="{StaticResource DxoStroke}" VerticalAlignment="Center" />
                                     <FontIcon Glyph="{x:Bind TransportGlyph, Mode=OneWay}" FontSize="12" Foreground="{StaticResource DxoTextSecondary}" />
@@ -113,23 +113,8 @@
 
                 <NavigationViewItemSeparator />
                 <NavigationViewItemHeader Content="Configure" />
-                <NavigationViewItem Content="Mappings" Tag="mappings">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
                 <NavigationViewItem Content="Virtual Device" Tag="virtual">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Adaptive Triggers" Tag="triggers">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE945;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Lighting" Tag="lighting">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE790;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Haptics and Rumble" Tag="haptics">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE995;" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Content="Motion" Tag="motion">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7AD;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
 
                 <NavigationViewItemSeparator />
@@ -154,11 +139,13 @@
             <Border x:Name="IslandScrim" Background="#59080810" Opacity="0" Tapped="Scrim_Tapped" />
             <Canvas>
                 <!-- Always full size; a rounded clip grows from the pill's shape to reveal it (no stretched text) -->
-                <Border x:Name="Island" Width="440" Height="424" CornerRadius="16" Padding="14,0,14,14"
+                <Border x:Name="Island" Width="440" Height="512" CornerRadius="16" Padding="14,0,14,14"
                         Background="{StaticResource DxoSurfaceLow}" BorderBrush="{StaticResource DxoStroke}" BorderThickness="1">
                     <Grid x:Name="IslandContent" Opacity="0" RowSpacing="12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="32" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -175,7 +162,7 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Ellipse Width="7" Height="7" Fill="{StaticResource DxoSuccess}" VerticalAlignment="Center" />
+                            <Ellipse x:Name="CardDot" Width="8" Height="8" Fill="{StaticResource DxoSuccess}" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock x:Name="CardName" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock x:Name="CardPlayer" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
@@ -259,7 +246,51 @@
                                       AutomationProperties.Name="Profile" />
                         </Grid>
 
-                        <Grid Grid.Row="7" ColumnSpacing="8">
+                        <Grid Grid.Row="6" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Light bar" Foreground="{StaticResource DxoTextSecondary}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <DropDownButton x:Name="CardColorButton" Padding="8,6" AutomationProperties.Name="Pick a colour"
+                                                ToolTipService.ToolTip="Pick a colour">
+                                    <Border x:Name="CardColorSwatch" Width="24" Height="16" CornerRadius="4" />
+                                    <DropDownButton.Flyout>
+                                        <Flyout Closed="CardColorFlyout_Closed">
+                                            <ColorPicker x:Name="CardColorPicker" ColorSpectrumShape="Ring" IsAlphaEnabled="False"
+                                                         IsMoreButtonVisible="False" IsColorChannelTextInputVisible="False" IsHexInputVisible="True" />
+                                        </Flyout>
+                                    </DropDownButton.Flyout>
+                                </DropDownButton>
+                                <ComboBox x:Name="CardLightBox" Width="166" SelectionChanged="CardLight_SelectionChanged"
+                                          AutomationProperties.Name="Light bar colour">
+                                    <x:String>Player colour</x:String>
+                                    <x:String>Profile's colour</x:String>
+                                    <x:String>My colour</x:String>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Grid.Row="7" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Turn off when idle" Foreground="{StaticResource DxoTextSecondary}" VerticalAlignment="Center"
+                                       ToolTipService.ToolTip="Bluetooth only: saves the battery when you walk away" />
+                            <ComboBox x:Name="CardIdleBox" Grid.Column="1" Width="220" SelectionChanged="CardIdle_SelectionChanged"
+                                      AutomationProperties.Name="Turn off when idle">
+                                <x:String>Never</x:String>
+                                <x:String>After 5 minutes</x:String>
+                                <x:String>After 10 minutes</x:String>
+                                <x:String>After 15 minutes</x:String>
+                                <x:String>After 30 minutes</x:String>
+                                <x:String>After 1 hour</x:String>
+                            </ComboBox>
+                        </Grid>
+
+                        <Grid Grid.Row="9" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition /><ColumnDefinition />
                             </Grid.ColumnDefinitions>

@@ -17,10 +17,31 @@
             <ColumnDefinition Width="380" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.ColumnSpan="2">
-            <TextBlock Text="Mappings" Style="{StaticResource DxoPageTitle}" />
+        <StackPanel Grid.ColumnSpan="2" Spacing="8">
+            <StackPanel x:Name="Header">
+                <TextBlock Text="Mappings" Style="{StaticResource DxoPageTitle}" />
+            </StackPanel>
             <TextBlock x:Name="SubTitle" Style="{StaticResource DxoCaption}"
                        Text="Click a button on the controller (or in the list) and choose what it does. Changes apply straight away." />
+            <!-- normal / shift layer -->
+            <Border Style="{StaticResource DxoCard}" Padding="12,6">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <SelectorBar x:Name="LayerBar" SelectionChanged="LayerBar_SelectionChanged">
+                        <SelectorBarItem x:Name="NormalItem" Text="Normal" IsSelected="True" />
+                        <SelectorBarItem x:Name="ShiftItem" Text="Shift layer" />
+                    </SelectorBar>
+                    <TextBlock x:Name="LayerHint" Grid.Column="1" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Hold for shift layer" VerticalAlignment="Center" />
+                        <ComboBox x:Name="ShiftBox" Width="180" DisplayMemberPath="Label" SelectionChanged="ShiftBox_SelectionChanged" />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </StackPanel>
 
         <!-- ===== Left: controller + button list ===== -->
@@ -63,6 +84,7 @@
                         <x:String>Keyboard key</x:String>
                         <x:String>Mouse</x:String>
                         <x:String>Nothing (disabled)</x:String>
+                        <x:String>Macro (a sequence)</x:String>
                     </ComboBox>
                 </controls:SettingsCard>
 
@@ -71,7 +93,19 @@
                     <ComboBox x:Name="TargetBox" Width="190" DisplayMemberPath="Label" SelectionChanged="Changed" />
                 </controls:SettingsCard>
 
-                <controls:SettingsCard Header="Turbo" Description="Repeats the press quickly while you hold the button">
+                <!-- macro editor -->
+                <StackPanel x:Name="MacroPanel" Spacing="6" Visibility="Collapsed">
+                    <controls:SettingsCard Header="Repeat while held" Description="Off: plays once each time you press">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8EE;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="RepeatToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
+                    <StackPanel x:Name="MacroSteps" Spacing="6" />
+                    <Button Click="AddStep_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE710;" FontSize="14" /><TextBlock Text="Add step" /></StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <controls:SettingsCard x:Name="TurboCard" Header="Turbo" Description="Repeats the press quickly while you hold the button">
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE945;" /></controls:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="TurboToggle" Toggled="Toggle_Changed" />
                 </controls:SettingsCard>
@@ -82,7 +116,7 @@
                         <TextBlock x:Name="TurboText" Width="44" VerticalAlignment="Center" />
                     </StackPanel>
                 </controls:SettingsCard>
-                <controls:SettingsCard Header="Toggle" Description="Press once to hold it down, press again to let go">
+                <controls:SettingsCard x:Name="ToggleCard" Header="Toggle" Description="Press once to hold it down, press again to let go">
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B1;" /></controls:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="ToggleToggle" Toggled="Toggle_Changed" />
                 </controls:SettingsCard>

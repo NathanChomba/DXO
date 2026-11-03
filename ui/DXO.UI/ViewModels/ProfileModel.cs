@@ -31,7 +31,11 @@ public sealed class ProfileModel
     public bool ControllerAudio { get; set; }
     public byte AudioVolume { get; set; } = 70;
     public GyroModel Gyro { get; set; } = new();
-    public uint IdleDisconnectMin { get; set; } = 15;
+    /// Hold this button for the shift layer; "" = off.
+    public string ShiftButton { get; set; } = "";
+    /// Bindings used while the shift button is held.
+    public List<BindingModel> ShiftBindings { get; set; } = new();
+    public MouseModel Mouse { get; set; } = new();
 
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -75,17 +79,49 @@ public sealed class BindingModel
     public bool Toggle { get; set; }
 }
 
-/// Rust: #[serde(tag = "type")] enum Action { Same, Button { to }, Key { vk }, Mouse { button }, Disabled }
+/// Rust: #[serde(tag = "type")] enum Action { Same, Button { to }, Key { vk }, Mouse { button }, Disabled, Macro { steps, repeat } }
 public sealed class ActionModel
 {
-    /// "same" | "button" | "key" | "mouse" | "disabled"
+    /// "same" | "button" | "key" | "mouse" | "disabled" | "macro"
     public string Type { get; set; } = "same";
+    /// Type = "macro"
+    public List<MacroStepModel>? Steps { get; set; }
+    public bool? Repeat { get; set; }
     /// target pad button (Type = "button")
     public string? To { get; set; }
     /// Windows virtual-key code (Type = "key")
     public ushort? Vk { get; set; }
     /// "left" | "right" | "middle" | "back" | "forward" | "wheel_up" | "wheel_down" (Type = "mouse")
     public string? Button { get; set; }
+}
+
+/// One macro step: press everything in Presses together for HoldMs, then wait GapMs.
+public sealed class MacroStepModel
+{
+    public List<PressModel> Presses { get; set; } = new();
+    public uint HoldMs { get; set; } = 50;
+    public uint GapMs { get; set; } = 50;
+}
+
+/// Rust: #[serde(tag = "type")] enum Press { Button { to }, Key { vk }, Mouse { button } }
+public sealed class PressModel
+{
+    /// "button" | "key" | "mouse"
+    public string Type { get; set; } = "key";
+    public string? To { get; set; }
+    public ushort? Vk { get; set; }
+    public string? Button { get; set; }
+}
+
+/// Touchpad and stick as mouse (pointer.rs MouseConfig).
+public sealed class MouseModel
+{
+    public bool Touchpad { get; set; }
+    public float TouchpadSpeed { get; set; } = 1.0f;
+    public bool TouchpadButtons { get; set; } = true;
+    /// "" = off, "left", "right"
+    public string Stick { get; set; } = "";
+    public float StickSpeed { get; set; } = 1200f;
 }
 
 public sealed class GyroModel

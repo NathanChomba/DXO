@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
@@ -99,6 +100,52 @@ public sealed partial class MainWindow : Window
         Device.PropertyChanged += OnDeviceChanged;
         Device.PadsChanged += OnPadsChanged;
         Nav.SelectedItem = Nav.MenuItems[0];
+        VersionText.Text = $"v{App.Version}";
+        Root.Loaded += OnFirstShown;
+    }
+
+    /// Once the window is on screen: first-run setup, then the update check.
+    private async void OnFirstShown(object sender, RoutedEventArgs e)
+    {
+        Root.Loaded -= OnFirstShown;
+        try
+        {
+            if (!App.Settings.SetupDone)
+            {
+                await System.Threading.Tasks.Task.Delay(1500); // give a plugged-in controller time to show up
+                await SetupCheck.ShowAsync(Root.XamlRoot);
+            }
+            if (App.Settings.CheckUpdatesOnStart && App.Settings.UpdateSource.Length > 0)
+            {
+                var (rel, _) = await Updater.CheckAsync(App.Settings.UpdateSource);
+                if (rel is not null && rel.Version != App.Settings.UpdateDismissed) await OfferUpdate(rel);
+            }
+        }
+        catch (Exception ex) { App.LogCrash("OnFirstShown", ex); }
+    }
+
+    /// "DXO 0.3.0 is out": Download opens the link in the browser; Later skips this version.
+    public async System.Threading.Tasks.Task OfferUpdate(Updater.Release rel)
+    {
+        var d = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot,
+            Title = $"DXO {rel.Version} is available",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 320,
+                Content = new TextBlock
+                {
+                    Text = $"You have {App.Version}." + (rel.Notes.Length > 0 ? "\n\n" + rel.Notes : ""),
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            },
+            PrimaryButtonText = rel.Url.Length > 0 ? "Download" : "",
+            CloseButtonText = "Later",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await d.ShowAsync() == ContentDialogResult.Primary) SetupCheck.Open(rel.Url);
+        else { App.Settings.UpdateDismissed = rel.Version; App.Settings.Save(); }
     }
 
     private void OnDeviceChanged(object? sender, PropertyChangedEventArgs e)
@@ -113,7 +160,7 @@ public sealed partial class MainWindow : Window
     private FrameworkElement? _cardPill;
     private Storyboard? _cardAnim;
     private bool _cardOpen, _cardLoading;
-    private const double CardW = 440, CardH = 424;
+    private const double CardW = 440, CardH = 512;
 
     /// The selected controller changed (or one came or went): pages show
     /// per-controller data, so reload the one on screen.
@@ -131,6 +178,7 @@ public sealed partial class MainWindow : Window
 
     private void ReloadPage()
     {
+        if (ContentFrame.Content is ProfileEditorPage editor) { editor.ReloadInner(); return; }
         if (ContentFrame.CurrentSourcePageType is Type t && t != typeof(HomePage) && t != typeof(SettingsPage) &&
             t != typeof(AboutPage) && t != typeof(GamesPage) && t != typeof(ProfilesPage))
         {
@@ -174,7 +222,64 @@ public sealed partial class MainWindow : Window
         CardProfile.SelectedItem = pad.Profile;
         CardReconnectText.Text = "Reconnect";
         CardReconnect.IsEnabled = true;
+        string lb = ctl?.Lightbar ?? "";
+        CardLightBox.SelectedIndex = lb.Length == 0 ? 0 : lb.Equals("profile", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+        int idle = Array.IndexOf(IdleMinutes, ctl?.IdleDisconnectMin ?? 0u);
+        CardIdleBox.SelectedIndex = idle < 0 ? 0 : idle;
+        ShowCardLight(ctl, pad);
         _cardLoading = false;
+    }
+
+    private static readonly uint[] IdleMinutes = { 0, 5, 10, 15, 30, 60 };
+    private Windows.UI.Color _cardShownLight;
+
+    private void ShowCardLight(ControllerModel? ctl, PadViewModel pad)
+    {
+        var colour = ControllerModel.LightColour(ctl, pad.Slot, pad.Profile);
+        _cardShownLight = colour;
+        CardColorSwatch.Background = new SolidColorBrush(colour);
+        CardDot.Fill = new SolidColorBrush(colour);
+        CardColorPicker.Color = colour;
+    }
+
+    private void CardLight_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_cardLoading || _cardPad is null) return;
+        string value = CardLightBox.SelectedIndex switch
+        {
+            1 => "profile",
+            2 => ControllerModel.Hex(CardColorPicker.Color),
+            _ => "",
+        };
+        UpdateController(c => c.Lightbar = value);
+        RefreshCardLight();
+    }
+
+    /// A colour picked in the flyout becomes this controller's own colour.
+    private void CardColorFlyout_Closed(object? sender, object e)
+    {
+        if (_cardPad is null || CardColorPicker.Color == _cardShownLight) return; // opened and closed without picking
+        var hex = ControllerModel.Hex(CardColorPicker.Color);
+        UpdateController(c => c.Lightbar = hex);
+        _cardLoading = true;
+        CardLightBox.SelectedIndex = 2;
+        _cardLoading = false;
+        RefreshCardLight();
+    }
+
+    private void RefreshCardLight()
+    {
+        if (_cardPad is null || App.Engine is not { } eng) return;
+        _cardLoading = true;
+        ShowCardLight(ControllerModel.FromJson(eng.ControllerJson(_cardPad.Slot)), _cardPad);
+        _cardLoading = false;
+    }
+
+    private void CardIdle_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_cardLoading || _cardPad is null || CardIdleBox.SelectedIndex < 0) return;
+        uint min = IdleMinutes[CardIdleBox.SelectedIndex];
+        UpdateController(c => c.IdleDisconnectMin = min);
     }
 
     private RectangleClip? _clip;
@@ -321,6 +426,7 @@ public sealed partial class MainWindow : Window
         if (c is null) return;
         change(c);
         eng.SetControllerJson(_cardPad.Slot, c.ToJson());
+        _cardPad.LightStale = true;
         Device.RefreshPads(eng);
     }
 
@@ -397,8 +503,21 @@ public sealed partial class MainWindow : Window
 
     public void OpenSettings() => Nav.SelectedItem = Nav.SettingsItem;
 
+    /// Old page tags that are now tabs of the Profiles page.
+    private static readonly Dictionary<string, string> EditorTabs = new()
+    {
+        ["mappings"] = "buttons", ["mouse"] = "mouse", ["motion"] = "motion",
+        ["haptics"] = "rumble", ["triggers"] = "triggers", ["lighting"] = "lighting",
+    };
+
     private void Select(string tag)
     {
+        if (EditorTabs.TryGetValue(tag, out var tab))
+        {
+            ProfileEditorPage.LastTab = tab;
+            if (ContentFrame.Content is ProfileEditorPage editor) { editor.ShowTab(tab); return; }
+            tag = "profiles";
+        }
         foreach (var item in Nav.MenuItems)
             if (item is NavigationViewItem n && (string)n.Tag == tag) { Nav.SelectedItem = n; return; }
     }
@@ -411,14 +530,9 @@ public sealed partial class MainWindow : Window
         {
             case "home": Go(typeof(HomePage)); break;
             case "controller": Go(typeof(MyControllerPage)); break;
-            case "profiles": Go(typeof(ProfilesPage)); break;
+            case "profiles": Go(typeof(ProfileEditorPage)); break;
             case "virtual": Go(typeof(VirtualDevicePage)); break;
-            case "triggers": Go(typeof(TriggersPage)); break;
-            case "lighting": Go(typeof(LightingPage)); break;
-            case "mappings": Go(typeof(MappingsPage)); break;
             case "diagnostics": Go(typeof(DiagnosticsPage)); break;
-            case "haptics": Go(typeof(HapticsPage)); break;
-            case "motion": Go(typeof(MotionPage)); break;
             case "games": Go(typeof(GamesPage)); break;
             case "about": Go(typeof(AboutPage)); break;
         }

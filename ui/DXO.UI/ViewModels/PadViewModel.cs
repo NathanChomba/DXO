@@ -30,11 +30,16 @@ public partial class PadViewModel : ObservableObject
     [ObservableProperty] private string _gamesSee = "";
     [ObservableProperty] private byte _target;
     [ObservableProperty] private string _playerText = "";
+    /// The controller's lightbar colour, shown as the pill's dot.
+    [ObservableProperty] private Microsoft.UI.Xaml.Media.SolidColorBrush _lightBrush = new(Microsoft.UI.Colors.Gray);
+    /// Light colour needs re-reading (new controller in this slot, profile or setting changed).
+    public bool LightStale { get; set; } = true;
 
     public PadViewModel(int slot) => Slot = slot;
 
     public void Update(PadInfo p)
     {
+        if (Id != p.Id || Profile != p.Profile) LightStale = true;
         Id = p.Id;
         Name = p.Name.Length == 0 ? "Controller" : p.Name;
         KindText = p.Kind switch { 1 => "DualShock 4", 2 => "DualSense", 3 => "DualSense Edge", 4 => "Generic gamepad", 5 => "Switch Pro Controller", _ => "Controller" };

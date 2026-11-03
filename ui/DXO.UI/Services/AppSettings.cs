@@ -31,6 +31,13 @@ public sealed class AppSettings
     public static readonly string[] ScaleLabels = { "Animation off", "0.3x", "0.5x", "1x", "1.5x", "2x", "5x", "10x" };
     /// The "DXO is still running" tray balloon has been shown once.
     public bool TrayHintShown { get; set; }
+    /// First-run setup has been shown (Settings > Run setup shows it again).
+    public bool SetupDone { get; set; }
+    /// Where to look for new versions: "owner/repo" (public GitHub) or an https JSON address.
+    public string UpdateSource { get; set; } = "";
+    public bool CheckUpdatesOnStart { get; set; } = true;
+    /// "Later" on this version: don't ask again at start-up until a newer one.
+    public string UpdateDismissed { get; set; } = "";
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DXO", "settings.json");
@@ -93,6 +100,25 @@ public static class Autostart
     public static bool HasTask => Schtasks("/Query /TN \"DXO\"") == 0;
 
     public static bool IsEnabled => HasRunKey || HasTask;
+
+    /// After moving DXO (e.g. installing it), re-point an old startup entry at this exe.
+    public static void RefreshIfMoved()
+    {
+        if (!IsElevated) return;
+        if (HasRunKey) { Set(true); return; } // Run key can't start an admin app: move it to a task
+        if (!HasTask) return;
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo("schtasks.exe", "/Query /TN \"DXO\" /XML")
+            {
+                CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true,
+            })!;
+            string xml = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            if (!xml.Contains(SecurityElement.Escape(Exe), StringComparison.OrdinalIgnoreCase)) Set(true);
+        }
+        catch (Exception ex) { App.LogCrash("Autostart.RefreshIfMoved", ex); }
+    }
 
     /// Returns an error message, or null on success.
     public static string? Set(bool on)

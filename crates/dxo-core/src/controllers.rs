@@ -9,6 +9,7 @@
 //!
 //! Stored in `controllers.toml` next to the profiles folder.
 
+use crate::output::Rgb;
 use crate::profile::{Profile, VirtualTarget};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -29,6 +30,12 @@ pub struct ControllerSettings {
     pub hide_physical: bool,
     /// exe name (case-insensitive) -> profile name, for this controller only.
     pub game_profiles: BTreeMap<String, String>,
+    /// Lightbar colour: "" = its player colour (P1 blue, P2 red, P3 green,
+    /// P4 pink), "profile" = the active profile's colour, "#rrggbb" = fixed.
+    pub lightbar: String,
+    /// Bluetooth only: turn the controller off after this many minutes
+    /// without input. 0 = never.
+    pub idle_disconnect_min: u32,
 }
 
 impl Default for ControllerSettings {
@@ -40,8 +47,36 @@ impl Default for ControllerSettings {
             target: VirtualTarget::Xbox360,
             hide_physical: true,
             game_profiles: BTreeMap::new(),
+            lightbar: String::new(),
+            idle_disconnect_min: 0,
         }
     }
+}
+
+/// PS4-style player colours, players 1-4.
+pub const PLAYER_COLOURS: [Rgb; 4] = [Rgb(0, 64, 255), Rgb(255, 0, 32), Rgb(0, 200, 40), Rgb(255, 64, 160)];
+
+impl ControllerSettings {
+    /// The lightbar colour this controller shows in `slot` with `profile` active.
+    pub fn lightbar_rgb(&self, slot: usize, profile: &Profile) -> Rgb {
+        let v = self.lightbar.trim();
+        if v.eq_ignore_ascii_case("profile") {
+            return profile.lightbar_rgb();
+        }
+        if let Some(c) = parse_hex(v) {
+            return c;
+        }
+        PLAYER_COLOURS[slot.min(PLAYER_COLOURS.len() - 1)]
+    }
+}
+
+fn parse_hex(s: &str) -> Option<Rgb> {
+    let h = s.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    let b = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
+    Some(Rgb(b(0)?, b(2)?, b(4)?))
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -152,6 +187,19 @@ mod tests {
         assert_eq!(effective_profile(&c, Some("eldenring.exe"), &profiles, &fallback).name, "Default");
         // emulation always comes from the controller, never the profile
         assert_eq!(effective_profile(&c, Some("eldenring.exe"), &profiles, &fallback).target, VirtualTarget::DualShock4);
+    }
+
+    #[test]
+    fn lightbar_choice() {
+        let p = Profile::default();
+        let mut c = ControllerSettings::default();
+        assert_eq!(c.lightbar_rgb(1, &p), PLAYER_COLOURS[1]);
+        c.lightbar = "profile".into();
+        assert_eq!(c.lightbar_rgb(1, &p), p.lightbar_rgb());
+        c.lightbar = "#FF8000".into();
+        assert_eq!(c.lightbar_rgb(3, &p), Rgb(255, 128, 0));
+        c.lightbar = "#nope".into();
+        assert_eq!(c.lightbar_rgb(9, &p), PLAYER_COLOURS[3]);
     }
 
     #[test]

@@ -8,7 +8,6 @@ remap = []                   # e.g. [["cross", "circle"], ["circle", "cross"]]
 lightbar = [0, 64, 255]
 player_leds = 4              # bitmask of the 5 DualSense player LEDs
 hide_physical = true         # cloak the real pad with HidHide
-idle_disconnect_min = 15     # Bluetooth only (M6), 0 = never
 
 [left_stick]
 deadzone = 0.08

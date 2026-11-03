@@ -8,7 +8,7 @@
     <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4">
             <TextBlock Text="Lighting" Style="{StaticResource DxoPageTitle}" />
-            <TextBlock Text="Light bar colour and player indicator LEDs." Style="{StaticResource DxoCaption}" Margin="0,0,0,8" />
+            <TextBlock Text="Light bar colour and player indicator LEDs. A controller shows the profile's colour when its card (click its pill above) is set to &quot;Profile's colour&quot;; otherwise it shows its player colour or its own." Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
             <SelectorBar x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
                 <SelectorBarItem Text="Light bar" IsSelected="True" />

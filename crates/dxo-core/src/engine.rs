@@ -14,7 +14,8 @@
 //! (`snapshot`, `set_profile`, `set_virtual`...) acts on it, so pages written
 //! for one controller keep working; `pads()` lists them all.
 
-use crate::bindings::{self, Runner};
+use crate::bindings::{self, Layers, Runner};
+use crate::pointer::Pointer;
 use crate::controllers::{effective_profile, ControllerSettings, ControllerStore};
 use crate::device::{self, Device, Kind};
 use crate::error::{Error, Result};
@@ -24,7 +25,7 @@ use crate::hidhide::{self, HidHide};
 use crate::mapping;
 use crate::output::{self, OutputState, TriggerEffect};
 use crate::profile::{Profile, VirtualTarget};
-use crate::state::PadState;
+use crate::state::{PadState, Transport};
 use crate::virtual_pad::{self, NullPad, VirtualPad};
 use hidapi::HidApi;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -694,6 +695,15 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     let mut calib = Calibrator::default();
     let mut gyro_mouse = GyroMouse::default();
     let mut runner = Runner::default();
+    let mut pointer = Pointer::default();
+    // This controller's saved settings (lightbar, idle timeout), re-read every second.
+    let ctl_id = pad.controller_id.lock().unwrap().clone();
+    let read_ctl = || ctl_id.as_deref().and_then(|id| sh.controllers.lock().unwrap().get(id)).unwrap_or_default();
+    let mut ctl = read_ctl();
+    let mut ctl_read_at = Instant::now();
+    let mut last_activity = Instant::now();
+    let mut activity_ref = PadState::default();
+    let bt_mac = ctl_id.as_deref().and_then(|id| id.strip_prefix("sony-")).map(str::to_string);
     let mut cemu: Option<CemuHookServer> = None;
     let mut cemu_cfg: Option<(bool, u16)> = None;
     let mut cemu_failed = false;
@@ -710,6 +720,23 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
             break "DXO is closing".into();
         }
         let profile = pad.profile.lock().unwrap().clone();
+        if ctl_read_at.elapsed() >= Duration::from_secs(1) {
+            ctl = read_ctl();
+            ctl_read_at = Instant::now();
+        }
+
+        // ---- idle disconnect (Bluetooth only) --------------------------------
+        if ctl.idle_disconnect_min > 0 && conn.dev.info.transport == Transport::Bluetooth {
+            if last_activity.elapsed() >= Duration::from_secs(ctl.idle_disconnect_min as u64 * 60) {
+                if let Some(mac) = &bt_mac {
+                    match crate::bluetooth::disconnect(mac) {
+                        Ok(()) => break format!("idle for {} min, turned off", ctl.idle_disconnect_min),
+                        Err(e) => log::warn!("idle disconnect: {e}"),
+                    }
+                }
+                last_activity = Instant::now(); // don't retry every frame
+            }
+        }
 
         // CemuHook serves one controller: player 1's.
         let want = (pad.slot == 0 && profile.gyro.cemuhook_server, profile.gyro.cemuhook_port);
@@ -760,8 +787,21 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
                 }
                 last_report_at = Some(now);
 
+                if is_activity(&activity_ref, &raw) {
+                    activity_ref = raw;
+                    last_activity = now;
+                }
                 let mut mapped = mapping::apply(&profile, &raw);
-                bindings::send(&runner.process(&profile.bindings, &raw, &mut mapped, now));
+                bindings::send(&runner.process(Layers::of(&profile), &raw, &mut mapped, now));
+                if !profile.mouse.is_off() {
+                    let po = pointer.step(&profile.mouse, &raw, &mut mapped, now);
+                    bindings::send(&po.events);
+                    if po.dx != 0 || po.dy != 0 {
+                        crate::gyro::move_mouse(po.dx, po.dy);
+                    }
+                } else {
+                    bindings::send(&pointer.release());
+                }
                 if let Err(e) = conn.vpad.update(&mapped) {
                     pad.snapshot.lock().unwrap().last_error = Some(e.to_string());
                 }
@@ -802,7 +842,7 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
 
         // ---- output ---------------------------------------------------------
         let mut out = pad.output_override.lock().unwrap().unwrap_or(OutputState {
-            lightbar: profile.lightbar_rgb(),
+            lightbar: ctl.lightbar_rgb(pad.slot, &profile),
             player_leds: PLAYER_LEDS[pad.slot],
             trigger_left: TriggerEffect::Off,
             trigger_right: TriggerEffect::Off,
@@ -839,6 +879,7 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
 
     log::info!("player {}: stopping ({reason})", pad.slot + 1);
     bindings::send(&runner.release_all()); // never leave a key held down
+    bindings::send(&pointer.release());
     if let (Some(h), Some(id)) = (hh.as_deref(), conn.hidden_instance.as_deref()) {
         let _ = h.unhide(id);
     }
@@ -847,6 +888,20 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     snap.connected = false;
     snap.pad_hidden = false;
     snap.virtual_active = false;
+}
+
+/// Did the player touch the controller since `prev`? Small stick drift and
+/// sensor noise don't count, so a pad left on the desk still times out.
+fn is_activity(prev: &PadState, now: &PadState) -> bool {
+    let moved = |a: f32, b: f32| (a - b).abs() > 0.2;
+    now.buttons != prev.buttons
+        || moved(now.lx, prev.lx)
+        || moved(now.ly, prev.ly)
+        || moved(now.rx, prev.rx)
+        || moved(now.ry, prev.ry)
+        || moved(now.l2, prev.l2)
+        || moved(now.r2, prev.r2)
+        || now.touch[0].active != prev.touch[0].active
 }
 
 /// Plug in the virtual pad and hide the real one. `Ok(None)` = the device was
