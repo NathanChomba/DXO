@@ -543,7 +543,30 @@ public sealed partial class MainWindow : Window
     public void NavDirection(FocusNavigationDirection dir)
     {
         if (EnsureFocus()) return;
+        // A focused slider eats the along-axis direction to change its value;
+        // the cross-axis direction falls through and moves focus off it.
+        if (FocusManager.GetFocusedElement(Root.XamlRoot) is Slider s && AdjustSlider(s, dir)) return;
         FocusManager.TryMoveFocus(dir, new FindNextElementOptions { SearchRoot = Root });
+    }
+
+    /// Nudge a focused slider. Returns true if it handled this direction (so
+    /// focus stays put); false lets the press move focus away instead.
+    private static bool AdjustSlider(Slider s, FocusNavigationDirection dir)
+    {
+        bool along = s.Orientation == Orientation.Horizontal
+            ? dir is FocusNavigationDirection.Left or FocusNavigationDirection.Right
+            : dir is FocusNavigationDirection.Up or FocusNavigationDirection.Down;
+        if (!along) return false;
+
+        double range = s.Maximum - s.Minimum;
+        if (range <= 0) return true;
+        bool up = dir is FocusNavigationDirection.Right or FocusNavigationDirection.Up;
+        double sf = s.StepFrequency > 0 ? s.StepFrequency : range / 100;
+        double step = Math.Max(sf, range / 20); // ~20 presses end to end feels right on a pad
+        double v = s.Value + (up ? step : -step);
+        v = s.Minimum + Math.Round((v - s.Minimum) / sf) * sf; // snap to the slider's own increments
+        s.Value = Math.Clamp(v, s.Minimum, s.Maximum);
+        return true;
     }
 
     private bool EnsureFocus()
@@ -582,7 +605,7 @@ public sealed partial class MainWindow : Window
         if (ContentFrame.Content is ProfileEditorPage editor) { editor.CycleTab(step); return; }
         var items = Nav.MenuItems.OfType<NavigationViewItem>().ToList();
         if (items.Count == 0) return;
-        int i = items.IndexOf(Nav.SelectedItem as NavigationViewItem);
+        int i = Nav.SelectedItem is NavigationViewItem cur ? items.IndexOf(cur) : -1;
         if (i < 0) i = 0;
         Nav.SelectedItem = items[((i + step) % items.Count + items.Count) % items.Count];
     }
