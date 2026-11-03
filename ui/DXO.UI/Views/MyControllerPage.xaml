@@ -7,8 +7,8 @@
     xmlns:local="using:DXO.UI.Views"
     xmlns:controls2="using:DXO.UI.Controls">
 
-    <ScrollViewer>
-        <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="{StaticResource DxoRowSpacing}" MaxWidth="1200">
+    <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="{StaticResource DxoRowSpacing}">
             <TextBlock Text="My Controller" Style="{StaticResource DxoPageTitle}" />
             <TextBlock Text="What DXO knows about the connected controller." Style="{StaticResource DxoCaption}" />
 

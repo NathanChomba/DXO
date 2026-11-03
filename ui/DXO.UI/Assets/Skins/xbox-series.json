@@ -1,0 +1,23 @@
+{
+  "name": "Xbox Series / generic",
+  "image": "xbox-series.png",
+  "width": 1600,
+  "height": 1147,
+  "controls": {
+    "dpad_up":    { "shape": "rect",   "x": 596,  "y": 511, "w": 78,  "h": 72,  "r": 12 },
+    "dpad_down":  { "shape": "rect",   "x": 596,  "y": 666, "w": 78,  "h": 72,  "r": 12 },
+    "dpad_left":  { "shape": "rect",   "x": 518,  "y": 588, "w": 72,  "h": 78,  "r": 12 },
+    "dpad_right": { "shape": "rect",   "x": 674,  "y": 588, "w": 72,  "h": 78,  "r": 12 },
+    "btn_north":  { "shape": "circle", "x": 1195, "y": 240, "r": 52 },
+    "btn_west":   { "shape": "circle", "x": 1088, "y": 345, "r": 52 },
+    "btn_east":   { "shape": "circle", "x": 1301, "y": 345, "r": 52 },
+    "btn_south":  { "shape": "circle", "x": 1195, "y": 449, "r": 52 },
+    "btn_select": { "shape": "circle", "x": 689,  "y": 343, "r": 33 },
+    "btn_start":  { "shape": "circle", "x": 913,  "y": 343, "r": 33 },
+    "btn_home":   { "shape": "rect",   "x": 801,  "y": 431, "w": 82,  "h": 42,  "r": 21 },
+    "shoulder_l": { "shape": "rect",   "x": 400,  "y": 86,  "w": 210, "h": 36,  "r": 18 },
+    "shoulder_r": { "shape": "rect",   "x": 1200, "y": 86,  "w": 210, "h": 36,  "r": 18 },
+    "stick_l":    { "shape": "stick",  "x": 407,  "y": 340, "r": 62,  "travel": 48 },
+    "stick_r":    { "shape": "stick",  "x": 1000, "y": 572, "r": 62,  "travel": 48 }
+  }
+}

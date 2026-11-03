@@ -95,10 +95,34 @@ public partial class DeviceViewModel : ObservableObject
         RightDotY = c - s.RY * r;
         L2 = s.L2 * 100;
         R2 = s.R2 * 100;
-        Pressed = s.Buttons == 0 ? "-" : ((DxoButtons)s.Buttons).ToString();
+        Pressed = s.Buttons == 0 ? "-" : ButtonNames(s.Buttons, s.Kind);
         Gyro = $"{s.GyroX,6} {s.GyroY,6} {s.GyroZ,6}";
         Kind = s.Kind;
         StateUpdated?.Invoke(s);
+    }
+
+    /// Pressed buttons as the player knows them: PlayStation names for Sony and
+    /// generic pads, Nintendo letters for a Switch Pro (by position).
+    private static string ButtonNames(uint bits, byte kind)
+    {
+        bool nintendo = kind == 5;
+        var names = new (DxoButtons Bit, string Name)[]
+        {
+            (DxoButtons.North, nintendo ? "X" : "Triangle"), (DxoButtons.East, nintendo ? "A" : "Circle"),
+            (DxoButtons.South, nintendo ? "B" : "Cross"), (DxoButtons.West, nintendo ? "Y" : "Square"),
+            (DxoButtons.L1, nintendo ? "L" : "L1"), (DxoButtons.R1, nintendo ? "R" : "R1"),
+            (DxoButtons.L2, nintendo ? "ZL" : "L2"), (DxoButtons.R2, nintendo ? "ZR" : "R2"),
+            (DxoButtons.L3, "L3"), (DxoButtons.R3, "R3"),
+            (DxoButtons.Select, nintendo ? "Minus" : "Share"), (DxoButtons.Start, nintendo ? "Plus" : "Options"),
+            (DxoButtons.Home, nintendo ? "Home" : "PS"), (DxoButtons.Touchpad, nintendo ? "Capture" : "Touchpad"),
+            (DxoButtons.Mute, "Mute"),
+            (DxoButtons.Up, "Up"), (DxoButtons.Down, "Down"), (DxoButtons.Left, "Left"), (DxoButtons.Right, "Right"),
+            (DxoButtons.PaddleL, "Left paddle"), (DxoButtons.PaddleR, "Right paddle"),
+        };
+        var on = new System.Collections.Generic.List<string>();
+        foreach (var (bit, name) in names)
+            if ((bits & (uint)bit) != 0) on.Add(name);
+        return on.Count == 0 ? "-" : string.Join(", ", on);
     }
 
     // ---- output: one place that builds DxoOutput so pages don't fight ----

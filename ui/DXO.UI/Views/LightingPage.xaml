@@ -5,8 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer>
-        <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4" MaxWidth="1200">
+    <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4">
             <TextBlock Text="Lighting" Style="{StaticResource DxoPageTitle}" />
             <TextBlock Text="Light bar colour and player indicator LEDs." Style="{StaticResource DxoCaption}" Margin="0,0,0,8" />
 

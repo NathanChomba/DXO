@@ -308,6 +308,14 @@ impl Blueprint {
         if s.l2 > 0.5 {
             s.buttons.set(Buttons::L2_DIGITAL, true);
         }
+        // Most cheap pads have on/off triggers (buttons 7/8, no axis): treat a
+        // press as a full pull so games and the trigger gauges see it.
+        if s.buttons.has(Buttons::L2_DIGITAL) && s.l2 < 0.01 {
+            s.l2 = 1.0;
+        }
+        if s.buttons.has(Buttons::R2_DIGITAL) && s.r2 < 0.01 {
+            s.r2 = 1.0;
+        }
         if s.r2 > 0.5 {
             s.buttons.set(Buttons::R2_DIGITAL, true);
         }
