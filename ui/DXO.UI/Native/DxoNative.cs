@@ -85,6 +85,25 @@ public struct DxoTiming
     public uint ReportLen;
 }
 
+/// One connected controller (ffi.rs DxoPadInfo, 144 bytes).
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct DxoPadInfo
+{
+    public byte Slot;            // 0..3 = player 1..4
+    public byte Selected;        // per-controller calls act on this pad
+    public byte Kind, Transport, BatteryPercent, BatteryStatus;
+    public byte PadHidden, VirtualActive;
+    public byte Target;          // 0 native, 1 Xbox 360, 2 DualShock 4
+    private byte _p0, _p1, _p2;
+    public uint ReportsPerSec;
+    public fixed byte Name[64];  // UTF-8, NUL-terminated
+    public fixed byte Profile[64];
+}
+
+/// DxoPadInfo with real strings, for the UI.
+public sealed record PadInfo(int Slot, bool Selected, byte Kind, bool Bluetooth, byte BatteryPercent, byte BatteryStatus,
+                             bool Hidden, bool VirtualActive, byte Target, uint ReportsPerSec, string Name, string Profile);
+
 /// Bit positions of PadState.buttons (state.rs `Buttons`).
 [Flags]
 public enum DxoButtons : uint
@@ -99,7 +118,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 6;
+    public const uint ExpectedAbi = 7;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -119,6 +138,11 @@ internal static partial class DxoNative
     [LibraryImport(Dll)] public static partial void dxo_set_virtual(IntPtr engine, byte target, byte hidePhysical, byte rumblePassthrough);
     [LibraryImport(Dll)] public static partial void dxo_reconnect(IntPtr engine);
     [LibraryImport(Dll)] public static partial void dxo_set_include_generic(IntPtr engine, byte on);
+
+    // ---- multiple controllers (ABI 7) ----
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_list_pads(IntPtr engine, DxoPadInfo* pads, nuint max);
+    [LibraryImport(Dll)] public static partial void dxo_select_pad(IntPtr engine, byte slot);
+    [LibraryImport(Dll)] public static partial byte dxo_get_selected_pad(IntPtr engine);
 
     // ---- profile editor (ABI 3) ----
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_active_profile_json(IntPtr engine, byte* buf, nuint len);
@@ -225,6 +249,35 @@ public sealed unsafe class DxoEngine : IDisposable
 
     /// JSON -> validated TOML file via the engine. False if the JSON was rejected.
     public static bool ProfileJsonToFile(string json, string path) => DxoNative.dxo_profile_json_to_file(json, path) != 0;
+
+    // ---- multiple controllers ----
+    /// Connected controllers in slot order. Every other per-controller call
+    /// acts on the selected one (SelectPad).
+    public System.Collections.Generic.List<PadInfo> ListPads()
+    {
+        const int Max = 4;
+        var buf = stackalloc DxoPadInfo[Max];
+        int n = (int)Math.Min((nuint)Max, DxoNative.dxo_list_pads(_h, buf, Max));
+        var list = new System.Collections.Generic.List<PadInfo>(n);
+        for (int i = 0; i < n; i++)
+        {
+            DxoPadInfo* p = buf + i; // stack memory: fixed buffers are plain pointers here
+            string name = Utf8Z(p->Name, 64), profile = Utf8Z(p->Profile, 64);
+            list.Add(new PadInfo(p->Slot, p->Selected != 0, p->Kind, p->Transport == 1, p->BatteryPercent, p->BatteryStatus,
+                                 p->PadHidden != 0, p->VirtualActive != 0, p->Target, p->ReportsPerSec, name, profile));
+        }
+        return list;
+    }
+
+    private static string Utf8Z(byte* p, int max)
+    {
+        int len = 0;
+        while (len < max && p[len] != 0) len++;
+        return Encoding.UTF8.GetString(p, len);
+    }
+
+    public void SelectPad(int slot) => DxoNative.dxo_select_pad(_h, (byte)slot);
+    public int SelectedPad => DxoNative.dxo_get_selected_pad(_h);
 
     // ---- motion ----
     public DxoMotion GetMotion()

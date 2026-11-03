@@ -26,6 +26,14 @@ public partial class DeviceViewModel : ObservableObject
     /// "HIDDEN FROM GAMES" / "VISIBLE TO GAMES" for the title-bar pill.
     [ObservableProperty] private string _hiddenText = "";
     private int _tick;
+    private int _padTick;
+
+    /// Every connected controller, in slot order (the controller bar).
+    public System.Collections.ObjectModel.ObservableCollection<PadViewModel> Pads { get; } = new();
+
+    /// Raised when the set of controllers or the selected one changes.
+    public event Action? PadsChanged;
+    private int _lastSelected = -1;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatus))]
     private string _status = "";
@@ -59,6 +67,8 @@ public partial class DeviceViewModel : ObservableObject
     {
         var e = App.Engine;
         if (e is null) return;
+
+        if (_padTick++ % 8 == 0) RefreshPads(e); // ~4 times a second
 
         var s = e.GetState();
         Connected = s.Connected != 0;
@@ -99,6 +109,38 @@ public partial class DeviceViewModel : ObservableObject
         Gyro = $"{s.GyroX,6} {s.GyroY,6} {s.GyroZ,6}";
         Kind = s.Kind;
         StateUpdated?.Invoke(s);
+    }
+
+    /// Sync Pads with the engine: update in place, add new, drop unplugged.
+    public void RefreshPads(DxoEngine e)
+    {
+        var list = e.ListPads();
+        bool changed = false;
+        for (int i = Pads.Count - 1; i >= 0; i--)
+            if (!list.Exists(p => p.Slot == Pads[i].Slot)) { Pads.RemoveAt(i); changed = true; }
+        foreach (var p in list)
+        {
+            var vm = System.Linq.Enumerable.FirstOrDefault(Pads, x => x.Slot == p.Slot);
+            if (vm is null)
+            {
+                vm = new PadViewModel(p.Slot);
+                int at = 0;
+                while (at < Pads.Count && Pads[at].Slot < p.Slot) at++;
+                Pads.Insert(at, vm);
+                changed = true;
+            }
+            vm.Update(p);
+        }
+        int sel = e.SelectedPad;
+        if (sel != _lastSelected) { _lastSelected = sel; changed = true; }
+        if (changed) PadsChanged?.Invoke();
+    }
+
+    /// Point every page at this controller.
+    public void SelectPad(int slot)
+    {
+        App.Engine?.SelectPad(slot);
+        if (App.Engine is { } e) RefreshPads(e);
     }
 
     /// Pressed buttons as the player knows them: PlayStation names for Sony and

@@ -21,6 +21,11 @@ public sealed partial class SettingsPage : Page
         MinToggle.IsOn = App.Settings.MinimizeToTray;
         StartToggle.IsOn = Autostart.IsEnabled;
         GenericToggle.IsOn = App.Settings.IncludeGeneric;
+        foreach (var box in new[] { WindowScaleBox, TransitionScaleBox, AnimatorScaleBox })
+            box.ItemsSource = AppSettings.ScaleLabels;
+        WindowScaleBox.SelectedIndex = ScaleIndex(App.Settings.WindowAnimationScale);
+        TransitionScaleBox.SelectedIndex = ScaleIndex(App.Settings.TransitionAnimationScale);
+        AnimatorScaleBox.SelectedIndex = ScaleIndex(App.Settings.AnimatorDurationScale);
         _loading = false;
         UpdateStartNote();
         // Cheap install checks: look for the files each driver ships.
@@ -54,6 +59,25 @@ public sealed partial class SettingsPage : Page
         if (_loading) return;
         App.Settings.CloseToTray = CloseToggle.IsOn;
         App.Settings.MinimizeToTray = MinToggle.IsOn;
+        App.Settings.Save();
+    }
+
+    /// Closest offered choice to a saved value.
+    private static int ScaleIndex(double v)
+    {
+        int best = 0;
+        for (int i = 1; i < AppSettings.ScaleChoices.Length; i++)
+            if (Math.Abs(AppSettings.ScaleChoices[i] - v) < Math.Abs(AppSettings.ScaleChoices[best] - v)) best = i;
+        return best;
+    }
+
+    private void Scale_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        double Pick(ComboBox b) => AppSettings.ScaleChoices[Math.Max(0, b.SelectedIndex)];
+        App.Settings.WindowAnimationScale = Pick(WindowScaleBox);
+        App.Settings.TransitionAnimationScale = Pick(TransitionScaleBox);
+        App.Settings.AnimatorDurationScale = Pick(AnimatorScaleBox);
         App.Settings.Save();
     }
 

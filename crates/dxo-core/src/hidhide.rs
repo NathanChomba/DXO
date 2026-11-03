@@ -54,7 +54,17 @@ impl HidHide {
     }
 
     fn run(&self, args: &[&str]) -> Result<String> {
-        let out = Command::new(&self.cli).args(args).output()?;
+        let mut cmd = Command::new(&self.cli);
+        cmd.args(args);
+        #[cfg(windows)]
+        {
+            // DXO's window app has no console, so without this every call pops up
+            // a terminal window (several per controller).
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let out = cmd.output()?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         if !out.status.success() {

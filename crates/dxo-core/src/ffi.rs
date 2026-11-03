@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 6; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads
+pub const DXO_ABI_VERSION: u32 = 7; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -151,6 +151,59 @@ pub struct DxoTiming {
     pub report_len: u32,
 }
 
+/// One connected controller for the controller bar (144 bytes).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DxoPadInfo {
+    /// 0..3 = player 1..4; pass to dxo_select_pad
+    pub slot: u8,
+    /// 1 = per-controller calls currently act on this pad
+    pub selected: u8,
+    /// same codes as DxoState.kind / transport / battery_*
+    pub kind: u8,
+    pub transport: u8,
+    pub battery_percent: u8,
+    pub battery_status: u8,
+    pub pad_hidden: u8,
+    pub virtual_active: u8,
+    /// 0 none (native), 1 Xbox 360, 2 DualShock 4
+    pub target: u8,
+    pub _pad: [u8; 3],
+    pub reports_per_sec: u32,
+    /// UTF-8, NUL-terminated (truncated to fit)
+    pub name: [u8; 64],
+    pub profile: [u8; 64],
+}
+
+fn fixed_str<const N: usize>(s: &str) -> [u8; N] {
+    let mut out = [0u8; N];
+    let mut end = s.len().min(N - 1);
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    out[..end].copy_from_slice(&s.as_bytes()[..end]);
+    out
+}
+
+fn kind_code(k: Option<crate::device::Kind>) -> u8 {
+    match k {
+        Some(crate::device::Kind::DualShock4) => 1,
+        Some(crate::device::Kind::DualSense) => 2,
+        Some(crate::device::Kind::DualSenseEdge) => 3,
+        Some(crate::device::Kind::Generic) => 4,
+        Some(crate::device::Kind::SwitchPro) => 5,
+        None => 0,
+    }
+}
+
+fn target_code(t: crate::profile::VirtualTarget) -> u8 {
+    match t {
+        crate::profile::VirtualTarget::None => 0,
+        crate::profile::VirtualTarget::Xbox360 => 1,
+        crate::profile::VirtualTarget::DualShock4 => 2,
+    }
+}
+
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(fallback)
 }
@@ -201,14 +254,7 @@ pub unsafe extern "C" fn dxo_get_state(h: *mut Engine, out: *mut DxoState) -> u8
         let m = s.mapped;
         *out = DxoState {
             connected: s.connected as u8,
-            kind: match s.kind {
-                Some(crate::device::Kind::DualShock4) => 1,
-                Some(crate::device::Kind::DualSense) => 2,
-                Some(crate::device::Kind::DualSenseEdge) => 3,
-                Some(crate::device::Kind::Generic) => 4,
-                Some(crate::device::Kind::SwitchPro) => 5,
-                None => 0,
-            },
+            kind: kind_code(s.kind),
             transport: m.transport as u8,
             battery_percent: m.battery_percent.unwrap_or(255),
             battery_status: m.battery_status as u8,
@@ -281,11 +327,7 @@ pub unsafe extern "C" fn dxo_get_virtual(h: *mut Engine, out: *mut DxoVirtual) -
         let p = e.profile();
         let s = e.snapshot();
         *out = DxoVirtual {
-            target: match p.target {
-                crate::profile::VirtualTarget::None => 0,
-                crate::profile::VirtualTarget::Xbox360 => 1,
-                crate::profile::VirtualTarget::DualShock4 => 2,
-            },
+            target: target_code(p.target),
             hide_physical: p.hide_physical as u8,
             rumble_passthrough: p.rumble_passthrough as u8,
             pad_hidden: s.pad_hidden as u8,
@@ -327,6 +369,56 @@ pub unsafe extern "C" fn dxo_reconnect(h: *mut Engine) {
             e.request_reconnect();
         }
     })
+}
+
+// ---- multiple controllers (ABI 7) -----------------------------------------
+// Every other per-controller call acts on the SELECTED controller.
+
+/// Fill `out` with up to `max` connected controllers. Returns how many are
+/// connected (may be more than `max`).
+#[no_mangle]
+pub unsafe extern "C" fn dxo_list_pads(h: *mut Engine, out: *mut DxoPadInfo, max: usize) -> usize {
+    guard(0, || {
+        let Some(e) = engine(h) else { return 0 };
+        let pads = e.pads();
+        if !out.is_null() {
+            for (i, p) in pads.iter().take(max).enumerate() {
+                let m = p.snapshot.mapped;
+                *out.add(i) = DxoPadInfo {
+                    slot: p.slot as u8,
+                    selected: p.selected as u8,
+                    kind: kind_code(p.snapshot.kind),
+                    transport: m.transport as u8,
+                    battery_percent: m.battery_percent.unwrap_or(255),
+                    battery_status: m.battery_status as u8,
+                    pad_hidden: p.snapshot.pad_hidden as u8,
+                    virtual_active: p.snapshot.virtual_active as u8,
+                    target: target_code(p.profile.target),
+                    _pad: [0; 3],
+                    reports_per_sec: p.snapshot.reports_per_sec,
+                    name: fixed_str(&p.snapshot.product),
+                    profile: fixed_str(&p.profile.name),
+                };
+            }
+        }
+        pads.len()
+    })
+}
+
+/// Make per-controller calls act on this slot (0..3).
+#[no_mangle]
+pub unsafe extern "C" fn dxo_select_pad(h: *mut Engine, slot: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.select(slot as usize);
+        }
+    })
+}
+
+/// The slot per-controller calls act on right now.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_selected_pad(h: *mut Engine) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.selected() as u8))
 }
 
 // ---- motion (ABI 4) -------------------------------------------------------
@@ -516,5 +608,6 @@ mod tests {
         assert_eq!(std::mem::size_of::<DxoVirtual>(), 8);
         assert_eq!(std::mem::size_of::<DxoMotion>(), 32);
         assert_eq!(std::mem::size_of::<DxoTiming>(), 32);
+        assert_eq!(std::mem::size_of::<DxoPadInfo>(), 144);
     }
 }

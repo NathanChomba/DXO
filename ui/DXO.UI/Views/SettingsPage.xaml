@@ -28,9 +28,23 @@
 
             <TextBlock Text="Controllers" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Other controllers (experimental)"
-                                   Description="Also use a Switch Pro Controller or a generic USB / Bluetooth gamepad when no PlayStation controller is connected. Reconnect the controller after turning this on.">
+                                   Description="Also use Switch Pro Controllers and generic USB / Bluetooth gamepads, alongside PlayStation ones. DXO picks them up straight away.">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="GenericToggle" Toggled="Generic_Toggled" />
+            </controls:SettingsCard>
+
+            <TextBlock Text="Animations" Style="{StaticResource DxoSectionTitle}" />
+            <controls:SettingsCard Header="Window animation scale" Description="The controller card growing out of a pill and closing again.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE737;" /></controls:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="WindowScaleBox" Width="160" SelectionChanged="Scale_Changed" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Transition animation scale" Description="Moving from one page to another.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></controls:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="TransitionScaleBox" Width="160" SelectionChanged="Scale_Changed" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Animator duration scale" Description="Smaller fades, such as the card's contents and the dimmed background.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></controls:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="AnimatorScaleBox" Width="160" SelectionChanged="Scale_Changed" />
             </controls:SettingsCard>
 
             <TextBlock Text="App" Style="{StaticResource DxoSectionTitle}" />

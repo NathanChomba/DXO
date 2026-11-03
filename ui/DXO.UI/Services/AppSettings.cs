@@ -16,6 +16,19 @@ public sealed class AppSettings
     public bool MinimizeToTray { get; set; }
     /// Also use Switch Pro and generic USB/Bluetooth gamepads (experimental).
     public bool IncludeGeneric { get; set; }
+
+    // Animation speed, like Android's developer options: 0 = off, 1 = normal,
+    // 0.5 = twice as fast, 2 = twice as slow.
+    /// The controller card growing out of a pill and shrinking back.
+    public double WindowAnimationScale { get; set; } = 0.3;
+    /// Moving between pages.
+    public double TransitionAnimationScale { get; set; } = 0.3;
+    /// Smaller fades (card contents, dimmed background).
+    public double AnimatorDurationScale { get; set; } = 0.3;
+
+    /// The choices offered in Settings, Android-style.
+    public static readonly double[] ScaleChoices = { 0, 0.3, 0.5, 1, 1.5, 2, 5, 10 };
+    public static readonly string[] ScaleLabels = { "Animation off", "0.3x", "0.5x", "1x", "1.5x", "2x", "5x", "10x" };
     /// The "DXO is still running" tray balloon has been shown once.
     public bool TrayHintShown { get; set; }
 

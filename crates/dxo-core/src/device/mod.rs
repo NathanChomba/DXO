@@ -42,7 +42,14 @@ impl Kind {
 /// Generic Desktop page, Joystick / Gamepad usages: anything matching this is
 /// a candidate for the M6 generic parser.
 fn is_gamepad_usage(info: &DeviceInfo) -> bool {
-    info.usage_page() == 0x01 && matches!(info.usage(), 0x04 | 0x05)
+    info.usage_page() == 0x01 && matches!(info.usage(), 0x04 | 0x05) && !is_xinput_hid(&info.path().to_string_lossy())
+}
+
+/// Windows gives every XInput pad (real Xbox controllers AND DXO's own virtual
+/// Xbox 360 pads) an extra HID view whose path contains "IG_". Never treat those
+/// as generic pads: opening our own virtual pad makes another one, endlessly.
+pub fn is_xinput_hid(path: &str) -> bool {
+    path.to_ascii_lowercase().contains("&ig_")
 }
 
 #[derive(Debug, Clone)]
@@ -204,4 +211,13 @@ pub fn open_first_except(
         .find(|f| !skip.contains(&f.path))
         .ok_or(Error::NoDevice)?;
     Device::open(api, found)
+}
+
+#[cfg(test)]
+mod xinput_tests {
+    #[test]
+    fn xinput_hid_paths_are_recognised() {
+        assert!(super::is_xinput_hid(r"\\?\HID#VID_045E&PID_028E&IG_00#3&2f6a9d28&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"));
+        assert!(!super::is_xinput_hid(r"\\?\HID#VID_0079&PID_0006#7&1fe6ccf2&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"));
+    }
 }
