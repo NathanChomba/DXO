@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 10; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav), 10: system chords
+pub const DXO_ABI_VERSION: u32 = 11; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav), 10: system chords, 11: diag-active gate
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -411,6 +411,17 @@ pub unsafe extern "C" fn dxo_set_chords(h: *mut Engine, on: u8) {
 #[no_mangle]
 pub unsafe extern "C" fn dxo_take_window_toggle(h: *mut Engine) -> u8 {
     guard(0, || engine(h).map_or(0, |e| e.take_window_toggle() as u8))
+}
+
+/// The Diagnostics page is open (1) or closed (0): workers only do per-report
+/// jitter/last-report bookkeeping while it's on. ABI 11.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_diag_active(h: *mut Engine, on: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.set_diag_active(on != 0);
+        }
+    })
 }
 
 /// Unhide, unplug the virtual pad, reconnect and hide again.

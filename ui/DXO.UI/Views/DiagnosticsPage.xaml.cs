@@ -27,8 +27,17 @@ public sealed partial class DiagnosticsPage : Page
         _timer.Tick += (_, _) => Tick();
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e) => _timer.Start();
-    protected override void OnNavigatedFrom(NavigationEventArgs e) => _timer.Stop();
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        App.Engine?.SetDiagActive(true); // workers record jitter/last-report only while we're here
+        _timer.Start();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        _timer.Stop();
+        App.Engine?.SetDiagActive(false);
+    }
 
     private void GraphHost_SizeChanged(object sender, SizeChangedEventArgs e) => Tick(force: true);
 

@@ -67,10 +67,17 @@ public sealed partial class MainWindow : Window
         if (_tray is not null && App.Settings.MinimizeToTray && sender.IsVisible &&
             sender.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
             HideToTray();
+
+        // Pause the live-view polling whenever the window isn't actually on screen
+        // (tray or minimised), including restores straight from the taskbar.
+        bool onScreen = sender.IsVisible &&
+            sender.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized };
+        if (App.Device is { } dev) dev.SetWindowVisible(onScreen);
     }
 
     private void HideToTray()
     {
+        if (App.Device is { } dev) dev.SetWindowVisible(false);
         AppWindow.Hide();
         if (!App.Settings.TrayHintShown)
         {
@@ -85,6 +92,7 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } p) p.Restore();
         AppWindow.Show();
         Activate();
+        if (App.Device is { } dev) dev.SetWindowVisible(true);
     }
 
     /// PS + L3 chord: pull DXO up from the tray, or tuck it back.

@@ -56,6 +56,8 @@ public partial class DeviceViewModel : ObservableObject
     /// Engine device kind (1 DS4, 2 DualSense, 3 Edge, 4 generic) for picking a skin.
     public byte Kind { get; private set; }
 
+    private bool _windowVisible = true;
+
     public DeviceViewModel(DispatcherQueue dq)
     {
         _timer = dq.CreateTimer();
@@ -65,12 +67,22 @@ public partial class DeviceViewModel : ObservableObject
         if (App.StartupError is { } err) Status = err;
     }
 
+    /// In the tray nobody can see the live view, so poll slowly and only for the
+    /// PS + L3 "show window" chord; resume full updates when the window is shown.
+    public void SetWindowVisible(bool visible)
+    {
+        if (_windowVisible == visible) return;
+        _windowVisible = visible;
+        _timer.Interval = TimeSpan.FromMilliseconds(visible ? 33 : 100);
+    }
+
     private void Refresh()
     {
         var e = App.Engine;
         if (e is null) return;
 
         if (e.TakeWindowToggle()) WindowToggleRequested?.Invoke(); // PS + L3
+        if (!_windowVisible) return; // hidden in the tray: skip the live-view work
 
         if (_padTick++ % 8 == 0) RefreshPads(e); // ~4 times a second
 

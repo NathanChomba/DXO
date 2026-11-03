@@ -163,6 +163,8 @@ struct Shared {
     include_generic: AtomicBool,
     /// System chords (hold PS + a button) are active.
     chords_enabled: AtomicBool,
+    /// The Diagnostics page is open, so the workers record jitter + last report.
+    diag_active: AtomicBool,
     /// A chord asked to show/hide the DXO window; the UI polls and clears this.
     window_toggle: AtomicBool,
     /// Ask the manager to scan now instead of waiting for its next tick.
@@ -236,6 +238,7 @@ impl Engine {
             reload_profiles: AtomicBool::new(false),
             include_generic: AtomicBool::new(cfg.include_generic),
             chords_enabled: AtomicBool::new(true),
+            diag_active: AtomicBool::new(false),
             window_toggle: AtomicBool::new(false),
             rescan: AtomicBool::new(true),
             enable_virtual: cfg.enable_virtual,
@@ -406,6 +409,12 @@ impl Engine {
     /// Turn system chords (hold PS + button) on or off.
     pub fn set_chords(&self, on: bool) {
         self.shared.chords_enabled.store(on, Ordering::Release);
+    }
+
+    /// The Diagnostics page sets this so workers only do per-report jitter/report
+    /// bookkeeping while it's on screen.
+    pub fn set_diag_active(&self, on: bool) {
+        self.shared.diag_active.store(on, Ordering::Release);
     }
 
     /// Did a chord ask to show/hide the window? Clears the flag.
@@ -714,6 +723,10 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     let mut runner = Runner::default();
     let mut pointer = Pointer::default();
     let mut chords = Chords::default();
+    // Efficiency: only push to ViGEm when the game-visible state changes, and
+    // refresh the UI snapshot at ~250 Hz instead of every report.
+    let mut last_vpad: Option<PadState> = None;
+    let mut last_snap: Option<Instant> = None;
     // This controller's saved settings (lightbar, idle timeout), re-read every second.
     let ctl_id = pad.controller_id.lock().unwrap().clone();
     let read_ctl = || ctl_id.as_deref().and_then(|id| sh.controllers.lock().unwrap().get(id)).unwrap_or_default();
@@ -791,7 +804,9 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
         match conn.dev.poll(4) {
             Ok(Some(raw)) => {
                 let now = Instant::now();
-                {
+                // Diagnostics (jitter + last report) is only shown on the Diagnostics
+                // page; skip the per-report copy and lock unless that page is open.
+                if sh.diag_active.load(Ordering::Acquire) {
                     let mut d = pad.diag.lock().unwrap();
                     if let Some(prev) = last_report_at {
                         if d.intervals_us.len() >= Diag::KEEP {
@@ -836,8 +851,13 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
                         sh.window_toggle.store(true, Ordering::Release);
                     }
                 }
-                if let Err(e) = conn.vpad.update(&mapped) {
-                    pad.snapshot.lock().unwrap().last_error = Some(e.to_string());
+                // Only push to the virtual pad when the game-visible state changed;
+                // ViGEm holds the last report, so an identical update is wasted work.
+                if last_vpad.as_ref().map_or(true, |p| !vpad_eq(p, &mapped)) {
+                    if let Err(e) = conn.vpad.update(&mapped) {
+                        pad.snapshot.lock().unwrap().last_error = Some(e.to_string());
+                    }
+                    last_vpad = Some(mapped);
                 }
                 calib.feed(raw.gyro, now);
                 if let Some(c) = cemu.as_mut() {
@@ -847,24 +867,29 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
                     crate::gyro::move_mouse(dx, dy);
                 }
                 rate_count += 1;
-                let mut snap = pad.snapshot.lock().unwrap();
-                snap.motion = MotionStatus {
-                    gyro_dps: calib.cal.gyro_dps(&raw),
-                    accel_g: calib.cal.accel_g(&raw),
-                    cal_state: calib.state,
-                    cemu_listening: cemu.is_some(),
-                    cemu_failed,
-                    cemu_port: profile.gyro.cemuhook_port,
-                    cemu_clients: cemu.as_ref().map_or(0, |c| c.client_count().min(255) as u8),
-                    mouse_active: profile.gyro.to_mouse && crate::gyro::mouse_hold_active(&profile.gyro.mouse_hold, &raw),
-                };
-                snap.raw = raw;
-                snap.mapped = mapped;
-                snap.profile_name = profile.name.clone();
-                if rate_t.elapsed() >= Duration::from_secs(1) {
-                    snap.reports_per_sec = rate_count;
-                    rate_count = 0;
-                    rate_t = Instant::now();
+                // The UI reads at ~30 Hz; refreshing the shared snapshot at ~250 Hz
+                // is ample and cuts lock traffic ~4x at a 1 kHz report rate.
+                if last_snap.map_or(true, |t| now.duration_since(t) >= Duration::from_millis(4)) {
+                    last_snap = Some(now);
+                    let mut snap = pad.snapshot.lock().unwrap();
+                    snap.motion = MotionStatus {
+                        gyro_dps: calib.cal.gyro_dps(&raw),
+                        accel_g: calib.cal.accel_g(&raw),
+                        cal_state: calib.state,
+                        cemu_listening: cemu.is_some(),
+                        cemu_failed,
+                        cemu_port: profile.gyro.cemuhook_port,
+                        cemu_clients: cemu.as_ref().map_or(0, |c| c.client_count().min(255) as u8),
+                        mouse_active: profile.gyro.to_mouse && crate::gyro::mouse_hold_active(&profile.gyro.mouse_hold, &raw),
+                    };
+                    snap.raw = raw;
+                    snap.mapped = mapped;
+                    snap.profile_name = profile.name.clone();
+                    if rate_t.elapsed() >= Duration::from_secs(1) {
+                        snap.reports_per_sec = rate_count;
+                        rate_count = 0;
+                        rate_t = Instant::now();
+                    }
                 }
             }
             Ok(None) => {}
@@ -922,6 +947,18 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     snap.connected = false;
     snap.pad_hidden = false;
     snap.virtual_active = false;
+}
+
+/// Do two states look the same to the virtual pad? Ignores sequence numbers,
+/// timestamps and motion, which change every report but never reach ViGEm.
+fn vpad_eq(a: &PadState, b: &PadState) -> bool {
+    a.buttons == b.buttons
+        && a.lx == b.lx
+        && a.ly == b.ly
+        && a.rx == b.rx
+        && a.ry == b.ry
+        && a.l2 == b.l2
+        && a.r2 == b.r2
 }
 
 /// Did the player touch the controller since `prev`? Small stick drift and
@@ -1011,6 +1048,7 @@ mod tests {
             reload_profiles: AtomicBool::new(false),
             include_generic: AtomicBool::new(false),
             chords_enabled: AtomicBool::new(true),
+            diag_active: AtomicBool::new(false),
             window_toggle: AtomicBool::new(false),
             rescan: AtomicBool::new(false),
             enable_virtual: false,
