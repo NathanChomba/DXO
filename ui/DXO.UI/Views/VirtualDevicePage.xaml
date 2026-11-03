@@ -69,7 +69,7 @@
                     </controls:SettingsCard>
 
                     <TextBlock Style="{StaticResource DxoCaption}" Margin="0,8,0,0"
-                               Text="These settings belong to the active profile. Save the profile on the Profiles page to keep them after a restart." />
+                               Text="These settings belong to the selected controller (the one you last clicked at the top) and are remembered for it. Switching profiles or games never changes them." />
                 </StackPanel>
             </Grid>
         </StackPanel>

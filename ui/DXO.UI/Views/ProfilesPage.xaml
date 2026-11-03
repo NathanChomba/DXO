@@ -137,7 +137,7 @@
                         </controls:SettingsCard.Description>
                     </controls:SettingsCard>
 
-                    <TextBlock Text="Lighting and virtual pad" Style="{StaticResource DxoSectionTitle}" />
+                    <TextBlock Text="Lighting and rumble" Style="{StaticResource DxoSectionTitle}" />
                     <controls:SettingsCard Header="Light bar colour">
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE790;" /></controls:SettingsCard.HeaderIcon>
                         <DropDownButton x:Name="ColorButton">
@@ -150,18 +150,8 @@
                             </DropDownButton.Flyout>
                         </DropDownButton>
                     </controls:SettingsCard>
-                    <controls:SettingsCard Header="Games see">
-                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7F4;" /></controls:SettingsCard.HeaderIcon>
-                        <ComboBox x:Name="TargetBox" Width="200" SelectionChanged="Combo_Changed">
-                            <x:String>Xbox 360 controller</x:String>
-                            <x:String>Real controller (native)</x:String>
-                            <x:String>DualShock 4 controller</x:String>
-                        </ComboBox>
-                    </controls:SettingsCard>
-                    <controls:SettingsCard Header="Hide physical controller">
-                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xED1A;" /></controls:SettingsCard.HeaderIcon>
-                        <ToggleSwitch x:Name="HideToggle" Toggled="Toggle_Changed" />
-                    </controls:SettingsCard>
+                    <TextBlock Style="{StaticResource DxoCaption}" Margin="4,8,0,0" TextWrapping="Wrap"
+                               Text="What games see (Xbox 360, DualShock 4 or your real controller) and hiding belong to each controller, not the profile. Set them by clicking the controller at the top." />
                     <controls:SettingsCard Header="Rumble passthrough">
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE995;" /></controls:SettingsCard.HeaderIcon>
                         <ToggleSwitch x:Name="RumbleToggle" Toggled="Toggle_Changed" />

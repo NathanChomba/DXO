@@ -85,7 +85,7 @@ public struct DxoTiming
     public uint ReportLen;
 }
 
-/// One connected controller (ffi.rs DxoPadInfo, 144 bytes).
+/// One connected controller (ffi.rs DxoPadInfo, 192 bytes).
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct DxoPadInfo
 {
@@ -96,13 +96,14 @@ public unsafe struct DxoPadInfo
     public byte Target;          // 0 native, 1 Xbox 360, 2 DualShock 4
     private byte _p0, _p1, _p2;
     public uint ReportsPerSec;
-    public fixed byte Name[64];  // UTF-8, NUL-terminated
+    public fixed byte Name[64];  // UTF-8, NUL-terminated; the user's name for it, else the product
     public fixed byte Profile[64];
+    public fixed byte Id[48];    // stable hardware id
 }
 
 /// DxoPadInfo with real strings, for the UI.
 public sealed record PadInfo(int Slot, bool Selected, byte Kind, bool Bluetooth, byte BatteryPercent, byte BatteryStatus,
-                             bool Hidden, bool VirtualActive, byte Target, uint ReportsPerSec, string Name, string Profile);
+                             bool Hidden, bool VirtualActive, byte Target, uint ReportsPerSec, string Name, string Profile, string Id);
 
 /// Bit positions of PadState.buttons (state.rs `Buttons`).
 [Flags]
@@ -118,7 +119,7 @@ public enum DxoButtons : uint
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 7;
+    public const uint ExpectedAbi = 8;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -143,6 +144,11 @@ internal static partial class DxoNative
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_list_pads(IntPtr engine, DxoPadInfo* pads, nuint max);
     [LibraryImport(Dll)] public static partial void dxo_select_pad(IntPtr engine, byte slot);
     [LibraryImport(Dll)] public static partial byte dxo_get_selected_pad(IntPtr engine);
+
+    // ---- per-controller settings (ABI 8) ----
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_controller_json(IntPtr engine, byte slot, byte* buf, nuint len);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial byte dxo_set_controller_json(IntPtr engine, byte slot, string json);
 
     // ---- profile editor (ABI 3) ----
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_active_profile_json(IntPtr engine, byte* buf, nuint len);
@@ -262,9 +268,9 @@ public sealed unsafe class DxoEngine : IDisposable
         for (int i = 0; i < n; i++)
         {
             DxoPadInfo* p = buf + i; // stack memory: fixed buffers are plain pointers here
-            string name = Utf8Z(p->Name, 64), profile = Utf8Z(p->Profile, 64);
+            string name = Utf8Z(p->Name, 64), profile = Utf8Z(p->Profile, 64), id = Utf8Z(p->Id, 48);
             list.Add(new PadInfo(p->Slot, p->Selected != 0, p->Kind, p->Transport == 1, p->BatteryPercent, p->BatteryStatus,
-                                 p->PadHidden != 0, p->VirtualActive != 0, p->Target, p->ReportsPerSec, name, profile));
+                                 p->PadHidden != 0, p->VirtualActive != 0, p->Target, p->ReportsPerSec, name, profile, id));
         }
         return list;
     }
@@ -277,6 +283,24 @@ public sealed unsafe class DxoEngine : IDisposable
     }
 
     public void SelectPad(int slot) => DxoNative.dxo_select_pad(_h, (byte)slot);
+
+    /// Saved settings of the controller in a slot, as JSON ("" = none).
+    public string ControllerJson(int slot)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            nuint need = DxoNative.dxo_get_controller_json(_h, (byte)slot, null, 0);
+            if (need <= 1) return string.Empty;
+            var buf = new byte[(int)need];
+            nuint got;
+            fixed (byte* p = buf) got = DxoNative.dxo_get_controller_json(_h, (byte)slot, p, need);
+            if (got <= need) return Encoding.UTF8.GetString(buf, 0, (int)got - 1);
+        }
+        return string.Empty;
+    }
+
+    /// Save + apply a controller's settings (emulation change reconnects that pad).
+    public bool SetControllerJson(int slot, string json) => DxoNative.dxo_set_controller_json(_h, (byte)slot, json) != 0;
     public int SelectedPad => DxoNative.dxo_get_selected_pad(_h);
 
     // ---- motion ----

@@ -15,6 +15,7 @@
 //! for one controller keep working; `pads()` lists them all.
 
 use crate::bindings::{self, Runner};
+use crate::controllers::{effective_profile, ControllerSettings, ControllerStore};
 use crate::device::{self, Device, Kind};
 use crate::error::{Error, Result};
 use crate::foreground::Watcher;
@@ -107,6 +108,8 @@ pub struct PadSummary {
     pub snapshot: Snapshot,
     pub profile: Profile,
     pub selected: bool,
+    /// This controller's saved settings (name, default profile, emulation, game rules).
+    pub controller: Option<ControllerSettings>,
 }
 
 /// Everything about one slot that the UI and its worker share.
@@ -123,6 +126,8 @@ struct Pad {
     diag: Mutex<Diag>,
     /// A worker is driving this slot right now.
     active: AtomicBool,
+    /// Hardware id of the controller in this slot (key into the controller store).
+    controller_id: Mutex<Option<String>>,
     /// The device this slot was last used by, and when it went away.
     path: Mutex<Option<CString>>,
     gone_at: Mutex<Option<Instant>>,
@@ -139,6 +144,7 @@ impl Pad {
             calibrate_gyro: AtomicBool::new(false),
             diag: Mutex::new(Diag::default()),
             active: AtomicBool::new(false),
+            controller_id: Mutex::new(None),
             path: Mutex::new(None),
             gone_at: Mutex::new(None),
         }
@@ -166,9 +172,41 @@ struct Shared {
     /// A worker is plugging in a virtual pad: a new controller that shows up
     /// before this moment is that virtual pad, not a real one.
     virtual_window: Mutex<Option<Instant>>,
+    /// Saved per-controller settings (controllers.toml).
+    controllers: Mutex<ControllerStore>,
+    /// Profiles from the profiles folder.
+    profiles: Mutex<Vec<Profile>>,
+    /// The app in front right now (exe name), None = not known yet.
+    fg_exe: Mutex<Option<String>>,
 }
 
 impl Shared {
+    /// Pick the profile for one pad from its controller settings and the app in
+    /// front. Only swaps it in when the profile actually changes, so live,
+    /// unsaved edits survive switching between non-game windows.
+    fn apply_rules(&self, pad: &Pad) {
+        let Some(id) = pad.controller_id.lock().unwrap().clone() else { return };
+        let Some(c) = self.controllers.lock().unwrap().get(&id) else { return };
+        let profiles = self.profiles.lock().unwrap().clone();
+        let fg = self.fg_exe.lock().unwrap().clone();
+        let p = effective_profile(&c, fg.as_deref(), &profiles, &starting_profile(&profiles));
+        let mut cur = pad.profile.lock().unwrap();
+        if cur.name != p.name {
+            log::info!("player {}: profile {} ({})", pad.slot + 1, p.name, fg.as_deref().unwrap_or("desktop"));
+            *cur = p;
+        } else {
+            // same profile: still make sure emulation/hiding follow the controller
+            cur.target = c.target;
+            cur.hide_physical = c.hide_physical;
+        }
+    }
+
+    fn apply_rules_all(&self) {
+        for pad in self.pads.iter().filter(|p| p.active.load(Ordering::Acquire)) {
+            self.apply_rules(pad);
+        }
+    }
+
     /// The slot the UI is looking at; falls back to the first connected pad.
     fn current(&self) -> &Arc<Pad> {
         let sel = self.selected.load(Ordering::Acquire).min(MAX_PADS - 1);
@@ -198,6 +236,12 @@ impl Engine {
             global_error: Mutex::new(None),
             cycled: Mutex::new(HashMap::new()),
             virtual_window: Mutex::new(None),
+            // controllers.toml lives beside the profiles folder (%LOCALAPPDATA%\DXO).
+            controllers: Mutex::new(ControllerStore::load(
+                cfg.profiles_dir.as_ref().and_then(|d| d.parent()).map(|d| d.join("controllers.toml")),
+            )),
+            profiles: Mutex::new(cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default()),
+            fg_exe: Mutex::new(None),
         });
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
@@ -229,8 +273,22 @@ impl Engine {
         s
     }
 
-    pub fn set_profile(&self, p: Profile) {
-        *self.shared.current().profile.lock().unwrap() = p;
+    /// Run this profile on the selected controller and make it that controller's
+    /// default (what it uses outside games). Emulation/hiding stay the controller's.
+    pub fn set_profile(&self, mut p: Profile) {
+        let pad = self.shared.current();
+        if let Some(id) = pad.controller_id.lock().unwrap().clone() {
+            let mut store = self.shared.controllers.lock().unwrap();
+            if let Some(mut c) = store.get(&id) {
+                p.target = c.target;
+                p.hide_physical = c.hide_physical;
+                if c.default_profile != p.name {
+                    c.default_profile = p.name.clone();
+                    store.set(c);
+                }
+            }
+        }
+        *pad.profile.lock().unwrap() = p;
     }
 
     pub fn profile(&self) -> Profile {
@@ -240,10 +298,37 @@ impl Engine {
     /// Change how games see the selected pad. Takes effect immediately: if the
     /// target or hiding changed, its worker reconnects with the new setup.
     pub fn set_virtual(&self, target: VirtualTarget, hide_physical: bool, rumble_passthrough: bool) {
-        let mut p = self.shared.current().profile.lock().unwrap();
+        let pad = self.shared.current();
+        // Emulation + hiding belong to the controller: save them there.
+        if let Some(id) = pad.controller_id.lock().unwrap().clone() {
+            let mut store = self.shared.controllers.lock().unwrap();
+            if let Some(mut c) = store.get(&id) {
+                c.target = target;
+                c.hide_physical = hide_physical;
+                store.set(c);
+            }
+        }
+        let mut p = pad.profile.lock().unwrap();
         p.target = target;
         p.hide_physical = hide_physical;
         p.rumble_passthrough = rumble_passthrough;
+    }
+
+    /// Saved settings of the controller in `slot` (None if nothing's there).
+    pub fn controller(&self, slot: usize) -> Option<ControllerSettings> {
+        let id = self.shared.pads.get(slot)?.controller_id.lock().unwrap().clone()?;
+        self.shared.controllers.lock().unwrap().get(&id)
+    }
+
+    /// Save new settings for the controller in `slot` and apply them now:
+    /// emulation/hiding (reconnects that pad if they changed), default profile
+    /// and game rules (re-picks its profile for the app in front).
+    pub fn set_controller(&self, slot: usize, mut c: ControllerSettings) {
+        let Some(pad) = self.shared.pads.get(slot) else { return };
+        let Some(id) = pad.controller_id.lock().unwrap().clone() else { return };
+        c.id = id;
+        self.shared.controllers.lock().unwrap().set(c);
+        self.shared.apply_rules(pad);
     }
 
     /// Drop and rebuild the selected pad's connection: unhide, unplug the
@@ -280,6 +365,12 @@ impl Engine {
                 snapshot: p.snapshot.lock().unwrap().clone(),
                 profile: p.profile.lock().unwrap().clone(),
                 selected: p.slot == cur,
+                controller: p
+                    .controller_id
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .and_then(|id| self.shared.controllers.lock().unwrap().get(&id)),
             })
             .collect()
     }
@@ -384,7 +475,6 @@ fn manage(sh: Arc<Shared>, cfg: EngineConfig) {
     };
     let hidhide_problem = sh.global_error.lock().unwrap().clone();
 
-    let mut profiles = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
     let mut fg = Watcher::default();
     let mut last_fg_check = Instant::now();
     let mut last_scan = Instant::now() - Duration::from_secs(10);
@@ -426,19 +516,18 @@ fn manage(sh: Arc<Shared>, cfg: EngineConfig) {
 
         // ---- profiles + game auto-switch ---------------------------------
         if sh.reload_profiles.swap(false, Ordering::AcqRel) {
-            profiles = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
+            let fresh = cfg.profiles_dir.as_deref().map(Profile::load_dir).unwrap_or_default();
+            log::info!("reloaded {} profiles", fresh.len());
+            *sh.profiles.lock().unwrap() = fresh;
             fg = Watcher::default(); // re-evaluate the current foreground app
-            log::info!("reloaded {} profiles", profiles.len());
         }
+        // The app in front changed: each controller picks its own profile
+        // (its rule for that game, else the game's profile, else its default).
         if last_fg_check.elapsed() > Duration::from_millis(500) {
             last_fg_check = Instant::now();
             if let Some(exe) = fg.poll() {
-                if let Some(p) = profiles.iter().find(|p| p.matches(&exe)) {
-                    log::info!("foreground {exe} -> profile {} on every controller", p.name);
-                    for pad in sh.pads.iter().filter(|p| p.active.load(Ordering::Acquire)) {
-                        *pad.profile.lock().unwrap() = p.clone();
-                    }
-                }
+                *sh.fg_exe.lock().unwrap() = Some(exe);
+                sh.apply_rules_all();
             }
         }
 
@@ -493,10 +582,16 @@ fn manage(sh: Arc<Shared>, cfg: EngineConfig) {
             // A different pad in this slot: start it fresh.
             let same = pad.path.lock().unwrap().as_ref() == Some(&path);
             if !same {
-                *pad.profile.lock().unwrap() = starting_profile(&profiles);
                 *pad.output_override.lock().unwrap() = None;
                 *pad.snapshot.lock().unwrap() = Snapshot::default();
             }
+            // Who is this? Load (or create) its saved settings, then pick its profile.
+            let id = dev.hardware_id();
+            sh.controllers.lock().unwrap().get_or_create(&id, &dev.info.product);
+            log::info!("controller {id} ({}) -> player {}", dev.info.product, slot + 1);
+            *pad.controller_id.lock().unwrap() = Some(id);
+            pad.profile.lock().unwrap().name.clear(); // force apply_rules to set it
+            sh.apply_rules(&pad);
             *pad.path.lock().unwrap() = Some(path);
             *pad.gone_at.lock().unwrap() = None;
             pad.active.store(true, Ordering::Release);
@@ -833,6 +928,9 @@ mod tests {
             global_error: Mutex::new(None),
             cycled: Mutex::new(HashMap::new()),
             virtual_window: Mutex::new(None),
+            controllers: Mutex::new(ControllerStore::default()),
+            profiles: Mutex::new(vec![]),
+            fg_exe: Mutex::new(None),
         }
     }
 
@@ -867,6 +965,46 @@ mod tests {
         assert_eq!(sh.current().slot, 2);
         sh.pads[0].active.store(true, Ordering::Release);
         assert_eq!(sh.current().slot, 0);
+    }
+
+    #[test]
+    fn each_controller_follows_its_own_rules() {
+        let sh = shared();
+        let mk = |name: &str, games: &[&str]| {
+            let mut p = Profile::default();
+            p.name = name.into();
+            p.match_process = games.iter().map(|g| g.to_string()).collect();
+            p
+        };
+        *sh.profiles.lock().unwrap() = vec![mk("Default", &[]), mk("Souls", &["eldenring.exe"]), mk("Casual", &[])];
+        {
+            let mut st = sh.controllers.lock().unwrap();
+            let mut a = st.get_or_create("sony-aaaaaaaaaaaa", "PS4");
+            a.target = VirtualTarget::DualShock4;
+            st.set(a);
+            let mut b = st.get_or_create("0079-0006-port-x", "USB Joystick");
+            b.default_profile = "Casual".into();
+            b.game_profiles.insert("eldenring.exe".into(), "Casual".into());
+            st.set(b);
+        }
+        for (slot, id) in [(0, "sony-aaaaaaaaaaaa"), (1, "0079-0006-port-x")] {
+            sh.pads[slot].active.store(true, Ordering::Release);
+            *sh.pads[slot].controller_id.lock().unwrap() = Some(id.into());
+        }
+        let name = |slot: usize| sh.pads[slot].profile.lock().unwrap().name.clone();
+
+        sh.apply_rules_all(); // desktop: each pad's default
+        assert_eq!((name(0), name(1)), ("Default".to_string(), "Casual".to_string()));
+        assert_eq!(sh.pads[0].profile.lock().unwrap().target, VirtualTarget::DualShock4);
+
+        *sh.fg_exe.lock().unwrap() = Some("eldenring.exe".into());
+        sh.apply_rules_all(); // pad 1 has its own rule for this game
+        assert_eq!((name(0), name(1)), ("Souls".to_string(), "Casual".to_string()));
+        assert_eq!(sh.pads[0].profile.lock().unwrap().target, VirtualTarget::DualShock4, "games never change emulation");
+
+        *sh.fg_exe.lock().unwrap() = Some("chrome.exe".into());
+        sh.apply_rules_all(); // left the game: back to defaults
+        assert_eq!(name(0), "Default");
     }
 
     #[test]

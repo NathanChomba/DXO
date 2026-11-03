@@ -9,6 +9,8 @@ namespace DXO.UI.ViewModels;
 public partial class PadViewModel : ObservableObject
 {
     public int Slot { get; }
+    /// Stable hardware id: settings follow the controller, not the slot.
+    public string Id { get; private set; } = "";
 
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _kindText = "";
@@ -33,6 +35,7 @@ public partial class PadViewModel : ObservableObject
 
     public void Update(PadInfo p)
     {
+        Id = p.Id;
         Name = p.Name.Length == 0 ? "Controller" : p.Name;
         KindText = p.Kind switch { 1 => "DualShock 4", 2 => "DualSense", 3 => "DualSense Edge", 4 => "Generic gamepad", 5 => "Switch Pro Controller", _ => "Controller" };
         Bluetooth = p.Bluetooth;

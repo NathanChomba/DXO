@@ -154,11 +154,13 @@
             <Border x:Name="IslandScrim" Background="#59080810" Opacity="0" Tapped="Scrim_Tapped" />
             <Canvas>
                 <!-- Always full size; a rounded clip grows from the pill's shape to reveal it (no stretched text) -->
-                <Border x:Name="Island" Width="440" Height="330" CornerRadius="16" Padding="14,0,14,14"
+                <Border x:Name="Island" Width="440" Height="424" CornerRadius="16" Padding="14,0,14,14"
                         Background="{StaticResource DxoSurfaceLow}" BorderBrush="{StaticResource DxoStroke}" BorderThickness="1">
                     <Grid x:Name="IslandContent" Opacity="0" RowSpacing="12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="32" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -208,7 +210,32 @@
                             </Border>
                         </Grid>
 
+                        <!-- This controller's own settings (saved per controller, kept across profiles) -->
                         <Grid Grid.Row="2" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Name" Foreground="{StaticResource DxoTextSecondary}" VerticalAlignment="Center" />
+                            <TextBox x:Name="CardNameBox" Grid.Column="1" Width="220" MaxLength="40"
+                                     KeyDown="CardNameBox_KeyDown" LostFocus="CardNameBox_LostFocus"
+                                     AutomationProperties.Name="Controller name" />
+                        </Grid>
+                        <Grid Grid.Row="3" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Emulate as" Foreground="{StaticResource DxoTextSecondary}" VerticalAlignment="Center" />
+                            <ComboBox x:Name="CardTargetBox" Grid.Column="1" Width="220" SelectionChanged="CardTarget_SelectionChanged"
+                                      AutomationProperties.Name="Emulate as">
+                                <x:String>Xbox 360 controller</x:String>
+                                <x:String>DualShock 4</x:String>
+                                <x:String>Nothing (native)</x:String>
+                            </ComboBox>
+                        </Grid>
+
+                        <Grid Grid.Row="4" ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -221,17 +248,18 @@
                                           Toggled="CardHide_Toggled" AutomationProperties.Name="Hide real controller from games" />
                         </Grid>
 
-                        <Grid Grid.Row="3" ColumnSpacing="10">
+                        <Grid Grid.Row="5" ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Profile" Foreground="{StaticResource DxoTextSecondary}" VerticalAlignment="Center" />
+                            <TextBlock Text="Default profile" Foreground="{StaticResource DxoTextSecondary}" VerticalAlignment="Center"
+                                       ToolTipService.ToolTip="Used outside games, and in games with no profile of their own" />
                             <ComboBox x:Name="CardProfile" Grid.Column="1" Width="220" SelectionChanged="CardProfile_SelectionChanged"
                                       AutomationProperties.Name="Profile" />
                         </Grid>
 
-                        <Grid Grid.Row="5" ColumnSpacing="8">
+                        <Grid Grid.Row="7" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition /><ColumnDefinition />
                             </Grid.ColumnDefinitions>

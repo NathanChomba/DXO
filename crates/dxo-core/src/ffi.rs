@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 7; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers
+pub const DXO_ABI_VERSION: u32 = 8; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -151,7 +151,7 @@ pub struct DxoTiming {
     pub report_len: u32,
 }
 
-/// One connected controller for the controller bar (144 bytes).
+/// One connected controller for the controller bar (192 bytes).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DxoPadInfo {
@@ -170,9 +170,11 @@ pub struct DxoPadInfo {
     pub target: u8,
     pub _pad: [u8; 3],
     pub reports_per_sec: u32,
-    /// UTF-8, NUL-terminated (truncated to fit)
+    /// UTF-8, NUL-terminated (truncated to fit). The user's name for it, else the product name.
     pub name: [u8; 64],
     pub profile: [u8; 64],
+    /// Stable hardware id (settings follow the controller, not the slot)
+    pub id: [u8; 48],
 }
 
 fn fixed_str<const N: usize>(s: &str) -> [u8; N] {
@@ -396,12 +398,43 @@ pub unsafe extern "C" fn dxo_list_pads(h: *mut Engine, out: *mut DxoPadInfo, max
                     target: target_code(p.profile.target),
                     _pad: [0; 3],
                     reports_per_sec: p.snapshot.reports_per_sec,
-                    name: fixed_str(&p.snapshot.product),
+                    name: fixed_str(
+                        p.controller.as_ref().map(|c| c.name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&p.snapshot.product),
+                    ),
                     profile: fixed_str(&p.profile.name),
+                    id: fixed_str(p.controller.as_ref().map_or("", |c| c.id.as_str())),
                 };
             }
         }
         pads.len()
+    })
+}
+
+/// Saved settings of the controller in `slot` as JSON (name, default_profile,
+/// target, hide_physical, game_profiles). Returns bytes needed incl. NUL; 0 = none.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_controller_json(h: *mut Engine, slot: u8, buf: *mut u8, len: usize) -> usize {
+    guard(0, || {
+        let Some(c) = engine(h).and_then(|e| e.controller(slot as usize)) else { return 0 };
+        copy_str(serde_json::to_string(&c).unwrap_or_default(), buf, len)
+    })
+}
+
+/// Save settings for the controller in `slot` and apply them now. Returns 1 on success.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_controller_json(h: *mut Engine, slot: u8, json: *const c_char) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(j)) = (engine(h), str_arg(json)) else { return 0 };
+        match serde_json::from_str::<crate::controllers::ControllerSettings>(j) {
+            Ok(c) => {
+                e.set_controller(slot as usize, c);
+                1
+            }
+            Err(err) => {
+                log::warn!("bad controller json: {err}");
+                0
+            }
+        }
     })
 }
 
@@ -608,6 +641,6 @@ mod tests {
         assert_eq!(std::mem::size_of::<DxoVirtual>(), 8);
         assert_eq!(std::mem::size_of::<DxoMotion>(), 32);
         assert_eq!(std::mem::size_of::<DxoTiming>(), 32);
-        assert_eq!(std::mem::size_of::<DxoPadInfo>(), 144);
+        assert_eq!(std::mem::size_of::<DxoPadInfo>(), 192);
     }
 }

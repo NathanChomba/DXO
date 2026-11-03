@@ -9,21 +9,60 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using DXO.UI.Services;
+using DXO.UI.Native;
 using DXO.UI.ViewModels;
 
 namespace DXO.UI.Views;
 
 /// One game in the list.
-public sealed class GameRow
+public sealed class GameRow : System.ComponentModel.INotifyPropertyChanged
 {
     public string Name { get; init; } = "";
     public string Source { get; init; } = "";
     public string Exe { get; init; } = "";
-    public string Subtitle => $"{Source}  ·  {Exe}";
+    public string Subtitle
+    {
+        get
+        {
+            int own = Overrides.Count(o => o.Assigned > 0);
+            return $"{Source}  ·  {Exe}" + (own == 0 ? "" : own == 1 ? "  ·  1 controller has its own profile" : $"  ·  {own} controllers have their own profile");
+        }
+    }
     /// "No profile" + every profile name (shared list)
     public List<string> Choices { get; init; } = new();
     /// Index into Choices: 0 = none
     public int Assigned { get; set; }
+
+    /// Per-controller choices for this game (connected controllers only).
+    public List<PadOverride> Overrides { get; init; } = new();
+    private bool _expanded;
+    public bool Expanded
+    {
+        get => _expanded;
+        set { _expanded = value; Changed(nameof(OverridesVisibility)); Changed(nameof(EachGlyph)); }
+    }
+    public Visibility OverridesVisibility => _expanded ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility EachVisibility => Overrides.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public string EachLabel => "Each controller";
+    public string EachGlyph => _expanded ? "\uE70E" : "\uE70D"; // chevron up / down
+
+    public void Refresh() => Changed(nameof(Subtitle));
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Changed(string n) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
+}
+
+/// One controller's choice for one game.
+public sealed class PadOverride
+{
+    public int Slot { get; init; }
+    public string PadName { get; init; } = "";
+    public string PlayerText { get; init; } = "";
+    public string Exe { get; init; } = "";
+    /// "Same as all controllers" + every profile name
+    public List<string> Choices { get; init; } = new();
+    /// 0 = same as all controllers
+    public int Assigned { get; set; }
+    public GameRow? Row { get; set; }
 }
 
 /// Detected games + per-game profile assignment. Assigning writes the game's
@@ -31,6 +70,7 @@ public sealed class GameRow
 public sealed partial class GamesPage : Page
 {
     private const string NoProfile = "No profile (use the active one)";
+    private const string SameAsAll = "Same as all controllers";
 
     private static List<FoundGame>? _scanCache; // scanning walks folders; do it once per run
     private readonly List<GameRow> _all = new();
@@ -57,6 +97,14 @@ public sealed partial class GamesPage : Page
 
         var choices = new List<string> { NoProfile };
         choices.AddRange(_profiles.Select(p => p.Model.Name));
+        var padChoices = new List<string> { SameAsAll };
+        padChoices.AddRange(_profiles.Select(p => p.Model.Name));
+
+        // Connected controllers and their saved per-game rules.
+        var pads = new List<(PadInfo Info, ControllerModel Model)>();
+        if (App.Engine is { } eng)
+            foreach (var p in eng.ListPads())
+                if (ControllerModel.FromJson(eng.ControllerJson(p.Slot)) is ControllerModel m) pads.Add((p, m));
 
         // Scanned games, plus anything profiles already list that the scan didn't find.
         var games = _scanCache!.Select(g => (g.Name, g.Source, g.Exe)).ToList();
@@ -66,7 +114,19 @@ public sealed partial class GamesPage : Page
 
         _all.Clear();
         foreach (var g in games.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
-            _all.Add(new GameRow { Name = g.Name, Source = g.Source, Exe = g.Exe, Choices = choices, Assigned = AssignedIndex(g.Exe) });
+        {
+            var row = new GameRow
+            {
+                Name = g.Name, Source = g.Source, Exe = g.Exe, Choices = choices, Assigned = AssignedIndex(g.Exe),
+                Overrides = pads.Select(p => new PadOverride
+                {
+                    Slot = p.Info.Slot, PadName = p.Info.Name, PlayerText = $"Player {p.Info.Slot + 1}", Exe = g.Exe,
+                    Choices = padChoices, Assigned = Math.Max(0, padChoices.IndexOf(p.Model.ProfileFor(g.Exe) ?? SameAsAll)),
+                }).ToList(),
+            };
+            foreach (var o in row.Overrides) o.Row = row;
+            _all.Add(row);
+        }
         Filter();
         int linked = _all.Count(r => r.Assigned > 0);
         StatusText.Text = $"{_all.Count} games  ·  {linked} with their own profile";
@@ -146,6 +206,30 @@ public sealed partial class GamesPage : Page
             }
         }
         return ok;
+    }
+
+    // ================= per controller =================
+
+    private void EachController_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is GameRow row) row.Expanded = !row.Expanded;
+    }
+
+    /// "In this game, this controller uses ..." -> saved in that controller's settings.
+    private void Override_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox cb || cb.DataContext is not PadOverride o || App.Engine is not { } eng) return;
+        int pick = cb.SelectedIndex;
+        if (pick < 0 || pick == o.Assigned) return; // initial binding / recycled row
+        var c = ControllerModel.FromJson(eng.ControllerJson(o.Slot));
+        if (c is null) { cb.SelectedIndex = o.Assigned; return; }
+        c.SetProfileFor(o.Exe, pick == 0 ? null : o.Choices[pick]);
+        if (!eng.SetControllerJson(o.Slot, c.ToJson())) { cb.SelectedIndex = o.Assigned; return; }
+        o.Assigned = pick;
+        o.Row?.Refresh();
+        StatusText.Text = pick == 0
+            ? $"{o.PadName} uses the same profile as everyone in {o.Row?.Name}."
+            : $"{o.PadName} will use \"{o.Choices[pick]}\" in {o.Row?.Name}.";
     }
 
     // ================= add by hand =================

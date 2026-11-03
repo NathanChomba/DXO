@@ -113,7 +113,7 @@ public sealed partial class MainWindow : Window
     private FrameworkElement? _cardPill;
     private Storyboard? _cardAnim;
     private bool _cardOpen, _cardLoading;
-    private const double CardW = 440, CardH = 330;
+    private const double CardW = 440, CardH = 424;
 
     /// The selected controller changed (or one came or went): pages show
     /// per-controller data, so reload the one on screen.
@@ -163,8 +163,11 @@ public sealed partial class MainWindow : Window
         CardLink.Text = pad.TransportText;
         CardRate.Text = pad.RateText;
         CardTarget.Text = pad.GamesSee;
-        CardHide.IsOn = pad.Hidden;
-        CardHide.IsEnabled = pad.Target != 0; // hiding only matters with a virtual pad
+        var ctl = App.Engine is { } eng ? ControllerModel.FromJson(eng.ControllerJson(pad.Slot)) : null;
+        CardNameBox.Text = string.IsNullOrEmpty(ctl?.Name) ? pad.Name : ctl.Name;
+        CardTargetBox.SelectedIndex = ctl is null ? (pad.Target switch { 2 => 1, 0 => 2, _ => 0 }) : ControllerModel.TargetIndex(ctl.Target);
+        CardHide.IsOn = ctl?.HidePhysical ?? pad.Hidden;
+        CardHide.IsEnabled = CardTargetBox.SelectedIndex != 2; // hiding only matters with a virtual pad
         var names = ProfileStore.All().Select(p => p.Model.Name).ToList();
         if (!names.Contains(pad.Profile)) names.Insert(0, pad.Profile);
         CardProfile.ItemsSource = names;
@@ -310,12 +313,49 @@ public sealed partial class MainWindow : Window
         if (e.Key == Windows.System.VirtualKey.Escape && _cardOpen) { CloseCard(); e.Handled = true; }
     }
 
+    /// Read-modify-write this controller's saved settings.
+    private void UpdateController(Action<ControllerModel> change)
+    {
+        if (_cardPad is null || App.Engine is not { } eng) return;
+        var c = ControllerModel.FromJson(eng.ControllerJson(_cardPad.Slot));
+        if (c is null) return;
+        change(c);
+        eng.SetControllerJson(_cardPad.Slot, c.ToJson());
+        Device.RefreshPads(eng);
+    }
+
+    private void CommitName()
+    {
+        if (_cardLoading || _cardPad is null) return;
+        var name = CardNameBox.Text.Trim();
+        if (name.Length == 0 || name == _cardPad.Name) return;
+        UpdateController(c => c.Name = name);
+        CardName.Text = name;
+    }
+
+    private void CardNameBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+        CommitName();
+        e.Handled = true;
+    }
+
+    private void CardNameBox_LostFocus(object sender, RoutedEventArgs e) => CommitName();
+
+    private void CardTarget_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_cardLoading || _cardPad is null || CardTargetBox.SelectedIndex < 0) return;
+        var target = ControllerModel.TargetName(CardTargetBox.SelectedIndex);
+        UpdateController(c => c.Target = target); // that pad reconnects as the new device
+        CardHide.IsEnabled = CardTargetBox.SelectedIndex != 2;
+        CardTarget.Text = CardTargetBox.SelectedIndex switch { 1 => "DualShock 4", 2 => "Your real controller", _ => "Xbox 360" };
+    }
+
     private void CardHide_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_cardLoading || _cardPad is null || App.Engine is not { } eng) return;
+        if (_cardLoading || _cardPad is null) return;
         Device.SelectPad(_cardPad.Slot);
-        var v = eng.GetVirtual();
-        eng.SetVirtual(v.Target, CardHide.IsOn, v.RumblePassthrough != 0); // reconnects that pad with the new setup
+        UpdateController(c => c.HidePhysical = CardHide.IsOn); // reconnects that pad with the new setup
     }
 
     private void CardProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)

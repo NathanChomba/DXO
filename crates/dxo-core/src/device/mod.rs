@@ -183,6 +183,42 @@ impl Device {
         Ok(Some(st))
     }
 
+    /// A stable id for THIS physical controller, so its settings follow it
+    /// across ports and between USB and Bluetooth where possible:
+    ///   * PlayStation pads: their Bluetooth address ("sony-a4b1c2d3e4f5"),
+    ///     from the serial string (Bluetooth) or a feature report (USB);
+    ///   * others: model + serial, or model + USB port when there's no serial
+    ///     (two identical cheap pads are told apart by the port they're in).
+    pub fn hardware_id(&self) -> String {
+        let i = &self.info;
+        let sony = matches!(i.kind, Kind::DualShock4 | Kind::DualSense | Kind::DualSenseEdge);
+        let serial = self.hid.get_serial_number_string().ok().flatten().unwrap_or_default();
+        if sony {
+            if let Some(mac) = mac_from_text(&serial) {
+                return format!("sony-{mac}");
+            }
+            // USB: DS4 report 0x12 / DualSense report 0x09 hold the address at bytes 1..7, reversed.
+            let (id, len) = if i.kind == Kind::DualShock4 { (0x12u8, 16) } else { (0x09u8, 20) };
+            let mut buf = vec![0u8; len];
+            buf[0] = id;
+            if let Ok(n) = self.hid.get_feature_report(&mut buf) {
+                if n >= 7 && buf[1..7].iter().any(|&b| b != 0) {
+                    let mac: String = buf[1..7].iter().rev().map(|b| format!("{b:02x}")).collect();
+                    return format!("sony-{mac}");
+                }
+            }
+        }
+        let model = format!("{:04x}-{:04x}", i.vid, i.pid);
+        let serial: String = serial.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        if !serial.is_empty() {
+            return format!("{model}-{}", serial.to_ascii_lowercase());
+        }
+        // No serial: the device instance part of the path names the port.
+        let path = i.path.to_string_lossy().to_ascii_lowercase();
+        let port = path.split('#').nth(2).unwrap_or(&path).replace('&', "-");
+        format!("{model}-port-{port}")
+    }
+
     /// Bytes of the most recent input report (Diagnostics page).
     pub fn last_report(&self) -> &[u8] {
         &self.buf[..self.last_len]
@@ -192,6 +228,12 @@ impl Device {
         self.hid.write(report)?;
         Ok(())
     }
+}
+
+/// "A4:B1:C2:D3:E4:F5" / "a4b1c2d3e4f5" -> "a4b1c2d3e4f5"; None if not an address.
+fn mac_from_text(s: &str) -> Option<String> {
+    let hex: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect::<String>().to_ascii_lowercase();
+    (hex.len() == 12 && hex != "000000000000").then_some(hex)
 }
 
 /// Open the first supported controller.
@@ -219,5 +261,15 @@ mod xinput_tests {
     fn xinput_hid_paths_are_recognised() {
         assert!(super::is_xinput_hid(r"\\?\HID#VID_045E&PID_028E&IG_00#3&2f6a9d28&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"));
         assert!(!super::is_xinput_hid(r"\\?\HID#VID_0079&PID_0006#7&1fe6ccf2&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"));
+    }
+}
+
+#[cfg(test)]
+mod id_tests {
+    #[test]
+    fn mac_parsing() {
+        assert_eq!(super::mac_from_text("A4:B1:C2:D3:E4:F5").as_deref(), Some("a4b1c2d3e4f5"));
+        assert_eq!(super::mac_from_text(""), None);
+        assert_eq!(super::mac_from_text("00:00:00:00:00:00"), None);
     }
 }
