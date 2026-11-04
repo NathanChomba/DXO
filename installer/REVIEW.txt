@@ -1,0 +1,45 @@
+DXO — review build
+===================
+
+Thanks for taking a look! DXO is a controller mapper for Windows (a
+DS4Windows / DSX-style tool): it reads a PlayStation, Switch Pro or generic
+gamepad and presents a virtual Xbox or DualShock 4 controller to games, with
+profiles, remaps, gyro, chords and more.
+
+This is an early, UNSIGNED review build. A few one-time setup steps:
+
+1) Windows 11, 64-bit.
+
+2) Install two small free drivers (DXO can't work without them):
+   - ViGEmBus  -> https://github.com/nefarius/ViGEmBus/releases/latest
+   - HidHide   -> https://github.com/nefarius/HidHide/releases/latest
+   Restart the PC after installing HidHide.
+   (DXO's first-run screen also links to these and checks they're present.)
+
+3) Run DXO.UI.exe.
+   - Windows will ask for administrator rights — DXO needs them to hide your
+     real controller from games. Click Yes.
+   - Because this build isn't code-signed yet, the prompt says
+     "unknown publisher". That's expected for a review build; it's safe to allow.
+   - If Windows says a .NET component is missing, install the
+     ".NET Desktop Runtime 10.0 (x64)" once from
+     https://dotnet.microsoft.com/download/dotnet/10.0 , then run it again.
+
+4) Connect a controller over USB, or pair it over Bluetooth
+   (hold PS + Share until the light flashes, then pair in Windows settings).
+
+That's it — DXO should pick it up and you can start making profiles.
+
+Handy shortcuts (hold PS, then press):
+  PS + D-pad Up/Down = volume,  PS + D-pad Left = mute
+  PS + Touchpad = screenshot,   PS + L3 = show/hide the DXO window
+  PS + Share = power off a Bluetooth controller
+
+Giving feedback
+---------------
+If something breaks, these logs help a lot (send them over):
+  %LOCALAPPDATA%\DXO\crash.log     (UI errors)
+  %LOCALAPPDATA%\DXO\engine.log    (engine errors, if present)
+Press Win+R and paste %LOCALAPPDATA%\DXO to open that folder.
+
+Thanks again!
