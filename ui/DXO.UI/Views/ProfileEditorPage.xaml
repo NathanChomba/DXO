@@ -30,11 +30,13 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:PadViewModel">
-                            <!-- outer = selection ring, inner = the pill (same look as the top bar) -->
-                            <Border Tapped="StripPill_Tapped" DoubleTapped="StripPill_DoubleTapped"
-                                    Background="Transparent" BorderThickness="2" CornerRadius="18"
-                                    BorderBrush="{x:Bind SelectionBrush, Mode=OneWay}"
-                                    ToolTipService.ToolTip="Click to edit this controller · double-click for details"
+                            <!-- outer = a button so focus (D-pad, Tab) can land on it: landing
+                                 on a pill switches to that controller, like clicking it. Its
+                                 border is the selection ring; inner = the pill (same look as the top bar). -->
+                            <Button Click="StripPill_Click" GotFocus="StripPill_GotFocus" DoubleTapped="StripPill_DoubleTapped"
+                                    Padding="0" MinWidth="0" MinHeight="0" Background="Transparent" BorderThickness="2" CornerRadius="18"
+                                    BorderBrush="{x:Bind SelectionBrush, Mode=OneWay}" UseSystemFocusVisuals="True"
+                                    ToolTipService.ToolTip="Click or move here to edit this controller · double-click for details"
                                     AutomationProperties.Name="{x:Bind Name, Mode=OneWay}">
                                 <Border Height="32" CornerRadius="16" Padding="12,0"
                                         Background="{StaticResource DxoSurfaceLow}" BorderThickness="1"
@@ -65,7 +67,7 @@
                                         </Border>
                                     </StackPanel>
                                 </Border>
-                            </Border>
+                            </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

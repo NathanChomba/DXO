@@ -20,6 +20,9 @@ public sealed partial class MotionPage : Page
     private static readonly string[] HoldKeys = { "", "l2", "r2", "l1", "r1", "touch" };
     private static readonly string[] HoldLabels = { "", "L2", "R2", "L1", "R1", "a finger on the touchpad" };
 
+    /// RatchetBox order -> GyroConfig.ratchet keys.
+    private static readonly string[] RatchetKeys = { "", "r1", "l1", "r2", "l2", "r3", "square", "touch" };
+
     /// Bar full scale, degrees/second (a quick flick is ~300).
     private const float BarMaxDps = 300f;
 
@@ -57,7 +60,8 @@ public sealed partial class MotionPage : Page
     {
         var p = ActiveProfile();
         bool ok = p is not null;
-        foreach (var c in new Control[] { MouseToggle, HoldBox, SensSlider, DeadSlider, InvertXToggle, InvertYToggle, CemuToggle, PortBox, CalButton, SaveButton })
+        foreach (var c in new Control[] { MouseToggle, HoldBox, SensSlider, DeadSlider, InvertXToggle, InvertYToggle, CemuToggle, PortBox, CalButton, SaveButton,
+                                          RatchetBox, SmoothSlider, SpaceBox, FlickToggle, FlickPx, FlickTime, SpinButton })
             c.IsEnabled = ok;
         if (p is null) { SaveStatus.Text = "The engine isn't running."; return; }
 
@@ -73,6 +77,12 @@ public sealed partial class MotionPage : Page
         InvertYToggle.IsOn = g.InvertY;
         CemuToggle.IsOn = g.CemuhookServer;
         PortBox.Value = g.CemuhookPort;
+        RatchetBox.SelectedIndex = Math.Max(0, Array.IndexOf(RatchetKeys, (g.Ratchet ?? "").Trim().ToLowerInvariant()));
+        SmoothSlider.Value = Math.Clamp(g.Smoothing, 0, 1);
+        SpaceBox.SelectedIndex = g.Space == "player" ? 1 : 0;
+        FlickToggle.IsOn = p.Flick.Enabled;
+        FlickPx.Value = Math.Clamp(Math.Round(p.Flick.PxPerTurn), 200, 100000);
+        FlickTime.Value = Math.Clamp(p.Flick.FlickMs, 0, 300);
         _loading = false;
 
         _unsaved = false;
@@ -95,6 +105,12 @@ public sealed partial class MotionPage : Page
         g.InvertY = InvertYToggle.IsOn;
         g.CemuhookServer = CemuToggle.IsOn;
         if (!double.IsNaN(PortBox.Value)) g.CemuhookPort = (ushort)Math.Clamp((int)PortBox.Value, 1024, 65535);
+        g.Ratchet = RatchetKeys[Math.Clamp(RatchetBox.SelectedIndex, 0, RatchetKeys.Length - 1)];
+        g.Smoothing = (float)Math.Round(SmoothSlider.Value, 2);
+        g.Space = SpaceBox.SelectedIndex == 1 ? "player" : "local";
+        p.Flick.Enabled = FlickToggle.IsOn;
+        if (!double.IsNaN(FlickPx.Value)) p.Flick.PxPerTurn = (float)Math.Clamp(Math.Round(FlickPx.Value), 200, 100000);
+        p.Flick.FlickMs = (uint)Math.Round(FlickTime.Value);
 
         if (App.Engine.SetActiveProfileJson(p.ToJson()))
         {
@@ -109,15 +125,36 @@ public sealed partial class MotionPage : Page
     private void Combo_Changed(object sender, SelectionChangedEventArgs e) => Push();
     private void Slider_Changed(object sender, RangeBaseValueChangedEventArgs e) => Push();
     private void Port_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args) => Push();
+    private void Number_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args) => Push();
+
+    /// Flick-stick calibration: the engine turns the mouse by "pixels per turn"
+    /// three seconds from now, giving time to click back into the game.
+    private async void Spin_Click(object sender, RoutedEventArgs e)
+    {
+        if (double.IsNaN(FlickPx.Value)) return;
+        DxoEngine.TestSpin((int)Math.Round(FlickPx.Value), 3000);
+        SpinButton.IsEnabled = false;
+        for (int s = 3; s > 0; s--)
+        {
+            SaveStatus.Text = $"Switch to the game: turning in {s}...";
+            await System.Threading.Tasks.Task.Delay(1000);
+        }
+        SaveStatus.Text = "Did the view turn exactly once? More: lower the number. Less: raise it.";
+        SpinButton.IsEnabled = App.Engine is not null;
+    }
 
     private void UpdateLabels()
     {
-        if (SensText is null || DeadText is null) return;
+        if (SensText is null || DeadText is null || SmoothText is null || FlickTimeText is null) return;
         SensText.Text = $"{SensSlider.Value:0.00}";
         DeadText.Text = $"{DeadSlider.Value:0.0}°/s";
+        SmoothText.Text = SmoothSlider.Value <= 0 ? "Off" : $"{SmoothSlider.Value * 100:0}%";
+        FlickTimeText.Text = FlickTime.Value <= 0 ? "Instant" : $"{FlickTime.Value:0} ms";
         bool on = MouseToggle.IsOn;
         HoldBox.IsEnabled = SensSlider.IsEnabled = DeadSlider.IsEnabled =
-            InvertXToggle.IsEnabled = InvertYToggle.IsEnabled = on && App.Engine is not null;
+            InvertXToggle.IsEnabled = InvertYToggle.IsEnabled =
+            RatchetBox.IsEnabled = SmoothSlider.IsEnabled = SpaceBox.IsEnabled = on && App.Engine is not null;
+        FlickPx.IsEnabled = FlickTime.IsEnabled = SpinButton.IsEnabled = FlickToggle.IsOn && App.Engine is not null;
         PortBox.IsEnabled = !CemuToggle.IsOn && App.Engine is not null; // change the port while it's off
     }
 

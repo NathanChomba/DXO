@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -19,7 +20,21 @@ public static class ButtonCatalog
         new("share", "Share / Back"), new("options", "Options / Start"), new("ps", "PS / Guide"), new("touchpad", "Touchpad click"),
         new("up", "D-pad up"), new("down", "D-pad down"), new("left", "D-pad left"), new("right", "D-pad right"),
         new("mute", "Mute (DualSense)"), new("paddle_l", "Left paddle (Edge)"), new("paddle_r", "Right paddle (Edge)"),
+        new("fn_l", "Left Fn (Edge)"), new("fn_r", "Right Fn (Edge)"),
     };
+
+    /// Dual-stage triggers: extra "buttons" that fire at a light pull and at a
+    /// full pull (bindings.rs `source_from_name`). Sources only, never targets.
+    public static readonly KeyLabel[] Stages =
+    {
+        new("l2_soft", "L2 soft pull"), new("l2_full", "L2 full pull"),
+        new("r2_soft", "R2 soft pull"), new("r2_full", "R2 full pull"),
+    };
+
+    /// Everything a binding can start from: the buttons, then the trigger stages.
+    public static readonly KeyLabel[] Sources = Buttons.Concat(Stages).ToArray();
+
+    public static bool IsStage(string key) => Stages.Any(s => s.Key == key);
 
     public static readonly KeyLabel[] Mouse =
     {
@@ -58,31 +73,55 @@ public static class ButtonCatalog
         return k.ToArray();
     }
 
-    public static string ButtonLabel(string key) => Buttons.FirstOrDefault(b => b.Key == key)?.Label ?? key;
+    public static string ButtonLabel(string key) => Sources.FirstOrDefault(b => b.Key == key)?.Label ?? key;
+    /// "Cross", "L2 soft pull": the label without its Xbox twin.
+    public static string ShortLabel(string key) => ButtonLabel(key).Split(" /")[0];
     public static string KeyName(ushort vk) => Keys.FirstOrDefault(k => k.Vk == vk)?.Label ?? $"key 0x{vk:X2}";
     public static string MouseLabel(string? key) => Mouse.FirstOrDefault(m => m.Key == key)?.Label ?? key ?? "?";
 
-    /// "Space key", "Left click (turbo)", ... or null if the binding changes nothing.
+    /// What one action does, in a few words; null for "itself".
+    public static string? DescribeAction(ActionModel a) => a.Type switch
+    {
+        "button" => ButtonLabel(a.To ?? ""),
+        "key" => a.Vk is ushort vk ? $"{KeyName(vk)} key" : null,
+        "mouse" => MouseLabel(a.Button),
+        "disabled" => "Nothing (disabled)",
+        "macro" => a.Steps is { Count: > 0 } st
+            ? $"Macro, {st.Count} step{(st.Count == 1 ? "" : "s")}{(a.Repeat == true ? ", repeats" : "")}"
+            : null,
+        "launch" => string.IsNullOrWhiteSpace(a.Target) ? null : $"Open {LaunchName(a.Target!)}",
+        _ => null,
+    };
+
+    /// "Discord.exe" from a full path, the host from a web address, else the text itself.
+    public static string LaunchName(string target)
+    {
+        target = target.Trim().Trim('"');
+        if (Uri.TryCreate(target, UriKind.Absolute, out var u) && (u.Scheme == "http" || u.Scheme == "https")) return u.Host;
+        int cut = target.LastIndexOfAny(new[] { '\\', '/' });
+        string name = cut >= 0 && cut < target.Length - 1 ? target[(cut + 1)..] : target;
+        return name.Length > 28 ? name[..27] + "…" : name;
+    }
+
+    /// "Space key", "Left click (turbo)", "A key · hold: B key", ... or null if
+    /// the binding changes nothing.
     public static string? Describe(BindingModel b)
     {
-        string? what = b.Action.Type switch
-        {
-            "button" => ButtonLabel(b.Action.To ?? ""),
-            "key" => b.Action.Vk is ushort vk ? $"{KeyName(vk)} key" : null,
-            "mouse" => MouseLabel(b.Action.Button),
-            "disabled" => "Nothing (disabled)",
-            "macro" => b.Action.Steps is { Count: > 0 } st
-                ? $"Macro, {st.Count} step{(st.Count == 1 ? "" : "s")}{(b.Action.Repeat == true ? ", repeats" : "")}"
-                : null,
-            _ => null,
-        };
+        string? what = DescribeAction(b.Action);
         var extras = new List<string>();
         if (b.Turbo) extras.Add($"turbo {b.TurboHz:0}/s");
         if (b.Toggle) extras.Add("toggle");
-        if (what is null && extras.Count == 0) return null;
+        string? hold = b.Hold is null ? null : $"hold: {DescribeAction(b.Hold) ?? "itself"}";
+        string? dbl = b.DoubleTap is null ? null : $"double: {DescribeAction(b.DoubleTap) ?? "itself"}";
+        if (what is null && extras.Count == 0 && hold is null && dbl is null) return null;
         what ??= "Itself";
-        return extras.Count == 0 ? what : $"{what} ({string.Join(", ", extras)})";
+        if (extras.Count > 0) what = $"{what} ({string.Join(", ", extras)})";
+        return string.Join("  ·  ", new[] { what, hold, dbl }.Where(x => x is not null));
     }
+
+    /// "L1 + R1" for a chord's buttons.
+    public static string ChordLabel(ChordModel c) =>
+        c.Buttons.Count == 0 ? "(pick two buttons)" : string.Join(" + ", c.Buttons.Select(ShortLabel));
 
     /// Everything a macro step can press, for the step pickers.
     public static readonly PressChoice[] Presses = BuildPresses();
@@ -103,7 +142,8 @@ public static class ButtonCatalog
     public static string Summary(ProfileModel m)
     {
         var parts = m.Bindings.Select(b => (b, d: Describe(b))).Where(x => x.d is not null)
-            .Select(x => $"{ButtonLabel(x.b.Button).Split(" /")[0]} → {x.d}")
+            .Select(x => $"{ShortLabel(x.b.Button)} → {x.d}")
+            .Concat(m.Chords.Where(c => c.Buttons.Count >= 2).Select(c => $"{ChordLabel(c)} → {DescribeAction(c.Action) ?? "nothing"}"))
             .Concat(m.Remap.Where(p => p.Count == 2).Select(p => $"{ButtonLabel(p[0]).Split(" /")[0]} → {ButtonLabel(p[1])}"))
             .ToList();
         if (parts.Count == 0) return "None: every button does what it says.";

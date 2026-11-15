@@ -16,6 +16,19 @@ pub fn shape_stick(x: f32, y: f32, inner: f32, outer: f32, curve: Curve) -> (f32
     (x / mag * scaled, y / mag * scaled)
 }
 
+/// Anti-deadzone: many games ignore the first 10-25 % of stick travel. Start
+/// our output at `anti` instead of 0 so the smallest push already clears the
+/// game's own deadzone. `anti` is the size of the game's deadzone (0 = off).
+pub fn anti_deadzone(x: f32, y: f32, anti: f32) -> (f32, f32) {
+    let anti = anti.clamp(0.0, 0.9);
+    let mag = (x * x + y * y).sqrt();
+    if anti <= 0.0 || mag <= 0.0 {
+        return (x, y);
+    }
+    let out = (anti + mag * (1.0 - anti)).min(1.0);
+    (x / mag * out, y / mag * out)
+}
+
 pub fn shape_trigger(v: f32, deadzone: f32) -> f32 {
     if v <= deadzone {
         0.0
@@ -30,6 +43,8 @@ pub fn apply(p: &Profile, raw: &PadState) -> PadState {
     let mut s = *raw;
     (s.lx, s.ly) = shape_stick(raw.lx, raw.ly, p.left_stick.deadzone, p.left_stick.outer, p.left_stick.curve);
     (s.rx, s.ry) = shape_stick(raw.rx, raw.ry, p.right_stick.deadzone, p.right_stick.outer, p.right_stick.curve);
+    (s.lx, s.ly) = anti_deadzone(s.lx, s.ly, p.left_stick.anti_deadzone);
+    (s.rx, s.ry) = anti_deadzone(s.rx, s.ry, p.right_stick.anti_deadzone);
     if p.left_stick.invert_y {
         s.ly = -s.ly;
     }
@@ -84,6 +99,8 @@ pub fn button_from_name(name: &str) -> Option<u32> {
         "right" => Buttons::DPAD_RIGHT,
         "paddle_l" => Buttons::PADDLE_L,
         "paddle_r" => Buttons::PADDLE_R,
+        "fn_l" => Buttons::FN_L,
+        "fn_r" => Buttons::FN_R,
         _ => return None,
     })
 }
@@ -101,6 +118,26 @@ mod tests {
     fn full_tilt_stays_full() {
         let (x, _) = shape_stick(1.0, 0.0, 0.1, 0.95, Curve::Linear);
         assert!((x - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn anti_deadzone_starts_past_the_games_deadzone() {
+        // at rest: still exactly zero (no drift is invented)
+        assert_eq!(anti_deadzone(0.0, 0.0, 0.2), (0.0, 0.0));
+        // the smallest push lands just outside a 20 % game deadzone
+        let (x, _) = anti_deadzone(0.01, 0.0, 0.2);
+        assert!(x > 0.2 && x < 0.22, "{x}");
+        // full tilt stays full, direction is kept
+        let (x, y) = anti_deadzone(0.0, -1.0, 0.2);
+        assert!(x.abs() < 1e-6 && (y + 1.0).abs() < 1e-6);
+        // through the profile: deadzone first, then anti-deadzone
+        let mut p = Profile::default();
+        p.left_stick.anti_deadzone = 0.15;
+        let mut raw = PadState::default();
+        raw.lx = 0.03; // inside DXO's own deadzone: stays zero
+        assert_eq!(apply(&p, &raw).lx, 0.0);
+        raw.lx = 0.2;
+        assert!(apply(&p, &raw).lx > 0.15);
     }
 
     #[test]

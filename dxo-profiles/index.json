@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "name": "DXO community profiles",
+  "profiles": [
+    {
+      "id": "call-of-duty-gyro-aim",
+      "name": "CoD: Gyro aim",
+      "game": "Call of Duty",
+      "category": "Shooter",
+      "controller": "DualSense",
+      "author": "NathanChomba",
+      "description": "Hold L2 to aim with the gyro, right stick for big turns. Weapon click on R2.",
+      "tags": [
+        "gyro",
+        "adaptive triggers"
+      ],
+      "version": 1,
+      "updated": "2026-11-12",
+      "url": "profiles/call-of-duty/gyro-aim.toml"
+    },
+    {
+      "id": "call-of-duty-classic-precision",
+      "name": "CoD: Classic precision",
+      "game": "Call of Duty",
+      "category": "Shooter",
+      "controller": "Any",
+      "author": "NathanChomba",
+      "description": "Sticks only. Small deadzones and a curve that slows the first part of the stick for fine aim.",
+      "tags": [
+        "sticks"
+      ],
+      "version": 1,
+      "updated": "2026-11-12",
+      "url": "profiles/call-of-duty/classic-precision.toml"
+    },
+    {
+      "id": "call-of-duty-edge-paddles",
+      "name": "CoD: Edge paddles",
+      "game": "Call of Duty",
+      "category": "Shooter",
+      "controller": "DualSense Edge",
+      "author": "NathanChomba",
+      "description": "Jump and slide on the back paddles so your thumb stays on the right stick.",
+      "tags": [
+        "paddles"
+      ],
+      "version": 1,
+      "updated": "2026-11-12",
+      "url": "profiles/call-of-duty/edge-paddles.toml"
+    },
+    {
+      "id": "forza-horizon-5-pedal-feel",
+      "name": "Forza Horizon 5: Pedal feel",
+      "game": "Forza Horizon 5",
+      "category": "Racing",
+      "controller": "DualSense",
+      "author": "NathanChomba",
+      "description": "Brake resistance on L2, light throttle on R2, fine steering.",
+      "tags": [
+        "adaptive triggers",
+        "steering"
+      ],
+      "version": 1,
+      "updated": "2026-11-12",
+      "url": "profiles/forza-horizon-5/pedal-feel.toml"
+    },
+    {
+      "id": "forza-horizon-5-gentle-steering",
+      "name": "Forza Horizon 5: Gentle steering",
+      "game": "Forza Horizon 5",
+      "category": "Racing",
+      "controller": "Any",
+      "author": "NathanChomba",
+      "description": "Soft steering near the centre for smooth corners; stronger low rumble for road feel.",
+      "tags": [
+        "steering",
+        "rumble"
+      ],
+      "version": 1,
+      "updated": "2026-11-12",
+      "url": "profiles/forza-horizon-5/gentle-steering.toml"
+    },
+    {
+      "id": "elden-ring-comfort",
+      "name": "Elden Ring: Comfort",
+      "game": "Elden Ring",
+      "category": "Action & adventure",
+      "controller": "DualSense",
+      "author": "NathanChomba",
+      "description": "Touchpad opens the map; smoothed camera stick; amber breathing light.",
+      "tags": [
+        "comfort"
+      ],
+      "version": 1,
+      "updated": "2026-11-12",
+      "url": "profiles/elden-ring/comfort.toml"
+    }
+  ]
+}

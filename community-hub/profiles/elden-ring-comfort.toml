@@ -1,0 +1,14 @@
+# Elden Ring: touchpad opens the map, lightbar breathes amber.
+name = "Elden Ring: Comfort"
+match_process = ["eldenring.exe"]
+remap = [["touchpad", "select"]]
+lightbar = [255, 140, 0]
+
+[right_stick]
+deadzone = 0.06
+curve = { type = "smooth", amount = 0.4 }
+
+[light]
+mode = "breathing"
+speed = 0.5
+brightness = 0.8

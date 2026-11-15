@@ -114,6 +114,7 @@ public enum DxoButtons : uint
     Select = 1 << 8, Start = 1 << 9, Home = 1 << 10, Touchpad = 1 << 11, Mute = 1 << 12,
     Up = 1 << 13, Down = 1 << 14, Left = 1 << 15, Right = 1 << 16,
     L2 = 1 << 17, R2 = 1 << 18, PaddleL = 1 << 19, PaddleR = 1 << 20,
+    FnL = 1 << 21, FnR = 1 << 22, // DualSense Edge function buttons
 }
 
 /// Raw buttons/sticks of the selected pad for in-app controller navigation (ffi.rs DxoNav).
@@ -126,10 +127,36 @@ public struct DxoNav
     private byte _p0, _p1, _p2;
 }
 
+/// The on-screen keyboard as the engine reports it (ffi.rs DxoOsk, 12 bytes).
+[StructLayout(LayoutKind.Sequential)]
+public struct DxoOsk
+{
+    public byte Open;
+    public byte Layer;   // 0 lower case, 1 upper case, 2 symbols
+    public byte Shift;   // 0 off, 1 next letter only, 2 caps lock
+    public byte Row;     // highlighted key: row...
+    public byte Key;     // ...and index within that row
+    public byte Owner;   // slot of the controller typing on it; 255 = closed
+    private byte _p0, _p1;
+    public uint Presses; // goes up by one for every key typed
+}
+
+/// The quick menu as the engine reports it (ffi.rs DxoRadial, 12 bytes).
+[StructLayout(LayoutKind.Sequential)]
+public struct DxoRadial
+{
+    public byte Open;
+    public byte Selected; // pointed-at item; 255 = none
+    public byte Count;
+    public byte Owner;    // slot of the controller driving it; 255 = closed
+    public uint Rev;      // changes when the items change
+    public uint Fired;    // goes up each time an item is carried out
+}
+
 internal static partial class DxoNative
 {
     private const string Dll = "dxo_core.dll";
-    public const uint ExpectedAbi = 11;
+    public const uint ExpectedAbi = 13;
 
     [LibraryImport(Dll)] public static partial uint dxo_abi_version();
 
@@ -153,6 +180,35 @@ internal static partial class DxoNative
     [LibraryImport(Dll)] public static partial void dxo_set_chords(IntPtr engine, byte on);
     [LibraryImport(Dll)] public static partial byte dxo_take_window_toggle(IntPtr engine);
     [LibraryImport(Dll)] public static partial void dxo_set_diag_active(IntPtr engine, byte on);
+
+    // ---- 0.3 (ABI 12) ----
+    [LibraryImport(Dll)] public static partial uint dxo_features();
+    [LibraryImport(Dll)] public static partial byte dxo_is_fullscreen(IntPtr engine);
+    [LibraryImport(Dll)] public static partial void dxo_test_spin(int px, uint delayMs);
+
+    // ---- on-screen keyboard (ABI 13) ----
+    [LibraryImport(Dll)] public static partial byte dxo_get_osk(IntPtr engine, out DxoOsk osk);
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_osk_layout_json(IntPtr engine, byte* buf, nuint len);
+    [LibraryImport(Dll)] public static partial byte dxo_osk_set_open(IntPtr engine, byte open);
+    [LibraryImport(Dll)] public static partial void dxo_set_osk_enabled(IntPtr engine, byte on);
+    [LibraryImport(Dll)] public static partial byte dxo_take_osk_refused(IntPtr engine);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial void dxo_set_known_games(IntPtr engine, string exes);
+
+    [LibraryImport(Dll)] public static partial void dxo_osk_click(IntPtr engine, byte row, byte key);
+    [LibraryImport(Dll)] public static partial void dxo_set_osk_external(IntPtr engine, byte on);
+    [LibraryImport(Dll)] public static partial byte dxo_take_osk_external_toggle(IntPtr engine);
+
+    // ---- quick menu + editable chords (ABI 13) ----
+    [LibraryImport(Dll)] public static partial byte dxo_get_radial(IntPtr engine, out DxoRadial radial);
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_radial_layout_json(IntPtr engine, byte* buf, nuint len);
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_radial_items_json(IntPtr engine, byte* buf, nuint len);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial byte dxo_set_radial_items_json(IntPtr engine, string json);
+    [LibraryImport(Dll)] public static partial byte dxo_radial_set_open(IntPtr engine, byte open);
+    [LibraryImport(Dll)] public static unsafe partial nuint dxo_get_chords_json(IntPtr engine, byte* buf, nuint len);
+    [LibraryImport(Dll, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial byte dxo_set_chords_json(IntPtr engine, string json);
 
     // ---- multiple controllers (ABI 7) ----
     [LibraryImport(Dll)] public static unsafe partial nuint dxo_list_pads(IntPtr engine, DxoPadInfo* pads, nuint max);
@@ -255,7 +311,78 @@ public sealed unsafe class DxoEngine : IDisposable
     public bool TakeWindowToggle() => DxoNative.dxo_take_window_toggle(_h) != 0;
     public void SetDiagActive(bool on) => DxoNative.dxo_set_diag_active(_h, (byte)(on ? 1 : 0));
 
+    /// This engine was built with sound-driven rumble (cargo feature `audio-haptics`).
+    public static bool HasAudioHaptics
+    {
+        get
+        {
+            try { return (DxoNative.dxo_features() & 1) != 0; }
+            catch (Exception) { return false; } // engine DLL missing or older
+        }
+    }
+    /// A full-screen game or video is in front right now.
+    public bool IsFullscreen => DxoNative.dxo_is_fullscreen(_h) != 0;
+    /// Flick-stick calibration: after `delayMs`, turn the mouse `px` pixels to the right.
+    public static void TestSpin(int px, uint delayMs) => DxoNative.dxo_test_spin(px, delayMs);
+
     public void Reconnect() => DxoNative.dxo_reconnect(_h);
+
+    // ---- on-screen keyboard ----
+    /// Open or not, which layer, where the highlight is.
+    public DxoOsk GetOsk()
+    {
+        DxoNative.dxo_get_osk(_h, out var o);
+        return o;
+    }
+
+    public bool OskOpen => GetOsk().Open != 0;
+
+    /// The keys of the layer on show: {"cols":11,"rows":[[{"label","col","span","kind"}]]}.
+    public string OskLayoutJson => ReadString(DxoNative.dxo_osk_layout_json);
+
+    /// Open or close the keyboard; the selected controller types on it.
+    /// False if it couldn't open (no controller connected).
+    public bool SetOskOpen(bool open) => DxoNative.dxo_osk_set_open(_h, (byte)(open ? 1 : 0)) != 0;
+
+    /// Let PS + Options open the keyboard.
+    public void SetOskEnabled(bool on) => DxoNative.dxo_set_osk_enabled(_h, (byte)(on ? 1 : 0));
+
+    /// The keyboard was asked for but refused (a game in front, controller in Native mode).
+    public bool TakeOskRefused() => DxoNative.dxo_take_osk_refused(_h) != 0;
+
+    /// A key clicked with the mouse or tapped on a touch screen.
+    public void OskClick(int row, int key) => DxoNative.dxo_osk_click(_h, (byte)row, (byte)key);
+
+    /// PS + Options opens Windows' own gamepad keyboard for a pad emulated as Xbox.
+    public void SetOskExternal(bool on) => DxoNative.dxo_set_osk_external(_h, (byte)(on ? 1 : 0));
+
+    /// The engine wants Windows' keyboard opened or closed now.
+    public bool TakeOskExternalToggle() => DxoNative.dxo_take_osk_external_toggle(_h) != 0;
+
+    // ---- quick menu ----
+    public DxoRadial GetRadial()
+    {
+        DxoNative.dxo_get_radial(_h, out var r);
+        return r;
+    }
+
+    /// Items for drawing: {"items":[{"label","type"}]}.
+    public string RadialLayoutJson => ReadString(DxoNative.dxo_radial_layout_json);
+    /// Items with their actions, for the editor: [{"label","action":{"type",...}}].
+    public string RadialItemsJson => ReadString(DxoNative.dxo_get_radial_items_json);
+    /// "[]" restores the defaults. False if the engine rejected the JSON.
+    public bool SetRadialItemsJson(string json) => DxoNative.dxo_set_radial_items_json(_h, json) != 0;
+    public bool SetRadialOpen(bool open) => DxoNative.dxo_radial_set_open(_h, (byte)(open ? 1 : 0)) != 0;
+
+    // ---- system chords ----
+    /// [{"button":"share","action":{"type":"power_off"}}]
+    public string ChordsJson => ReadString(DxoNative.dxo_get_chords_json);
+    /// "" restores the defaults. False if the engine rejected the JSON.
+    public bool SetChordsJson(string json) => DxoNative.dxo_set_chords_json(_h, json) != 0;
+
+    /// Exe names of installed games, so the engine can tell a game from an app.
+    public void SetKnownGames(System.Collections.Generic.IEnumerable<string> exes) =>
+        DxoNative.dxo_set_known_games(_h, string.Join('\n', exes));
 
     // ---- profiles ----
     public string ActiveProfileJson => ReadString(DxoNative.dxo_get_active_profile_json);

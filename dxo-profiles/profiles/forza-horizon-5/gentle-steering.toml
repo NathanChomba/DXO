@@ -1,0 +1,14 @@
+# Forza Horizon 5: softer steering near the centre for long, smooth
+# corners; full lock still reachable at the edge.
+name = "Forza Horizon 5: Gentle steering"
+match_process = ["ForzaHorizon5.exe"]
+lightbar = [0, 160, 255]
+
+[left_stick]
+deadzone = 0.04
+curve = { type = "power", exponent = 2.0 }
+
+[rumble_shape]
+floor = 0.2
+ceiling = 0.9
+curve = 0.8

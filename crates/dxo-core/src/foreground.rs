@@ -43,6 +43,22 @@ pub fn foreground_exe() -> Option<String> {
     None
 }
 
+/// Is a full-screen app in front? True for an exclusive-fullscreen Direct3D
+/// game and for a borderless full-screen game or video (Windows itself keeps
+/// track of both, to hold back notifications).
+#[cfg(windows)]
+pub fn fullscreen_app() -> bool {
+    use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN};
+    let mut state = 0;
+    let hr = unsafe { SHQueryUserNotificationState(&mut state) };
+    hr >= 0 && (state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_BUSY)
+}
+
+#[cfg(not(windows))]
+pub fn fullscreen_app() -> bool {
+    false
+}
+
 /// Remembers the last seen exe so callers only react to changes.
 #[derive(Default)]
 pub struct Watcher {

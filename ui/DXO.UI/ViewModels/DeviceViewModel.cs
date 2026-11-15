@@ -53,6 +53,30 @@ public partial class DeviceViewModel : ObservableObject
     public event Action<DxoState>? StateUpdated;
     /// A PS + L3 chord asked to show/hide the window.
     public event Action? WindowToggleRequested;
+    /// A controller's battery just dropped to "low" or "very low": (name, percent, veryLow).
+    public event Action<string, int, bool>? LowBattery;
+
+    private DateTime _nextBatteryCheck = DateTime.UtcNow.AddSeconds(15);
+    /// Per controller id: 0 = fine, 1 = warned at low, 2 = warned at very low.
+    private readonly System.Collections.Generic.Dictionary<string, int> _batteryWarned = new();
+    private const int BatteryLow = 20, BatteryVeryLow = 10;
+
+    /// Runs even while DXO sits in the tray, which is when it matters most.
+    private void CheckBatteries(DxoEngine e)
+    {
+        foreach (var p in e.ListPads())
+        {
+            string id = p.Id.Length > 0 ? p.Id : $"slot{p.Slot}";
+            bool charging = p.BatteryStatus is 2 or 3;
+            if (p.BatteryPercent == 255) continue; // this pad doesn't report its battery
+            if (charging || p.BatteryPercent > BatteryLow + 10) { _batteryWarned[id] = 0; continue; }
+            int level = p.BatteryPercent <= BatteryVeryLow ? 2 : p.BatteryPercent <= BatteryLow ? 1 : 0;
+            _batteryWarned.TryGetValue(id, out int warned);
+            if (level <= warned) continue;
+            _batteryWarned[id] = level;
+            LowBattery?.Invoke(p.Name.Length == 0 ? "Controller" : p.Name, p.BatteryPercent, level == 2);
+        }
+    }
     /// Engine device kind (1 DS4, 2 DualSense, 3 Edge, 4 generic) for picking a skin.
     public byte Kind { get; private set; }
 
@@ -82,6 +106,11 @@ public partial class DeviceViewModel : ObservableObject
         if (e is null) return;
 
         if (e.TakeWindowToggle()) WindowToggleRequested?.Invoke(); // PS + L3
+        if (DateTime.UtcNow >= _nextBatteryCheck)
+        {
+            _nextBatteryCheck = DateTime.UtcNow.AddSeconds(20);
+            CheckBatteries(e);
+        }
         if (!_windowVisible) return; // hidden in the tray: skip the live-view work
 
         if (_padTick++ % 8 == 0) RefreshPads(e); // ~4 times a second
@@ -183,6 +212,7 @@ public partial class DeviceViewModel : ObservableObject
             (DxoButtons.Mute, "Mute"),
             (DxoButtons.Up, "Up"), (DxoButtons.Down, "Down"), (DxoButtons.Left, "Left"), (DxoButtons.Right, "Right"),
             (DxoButtons.PaddleL, "Left paddle"), (DxoButtons.PaddleR, "Right paddle"),
+            (DxoButtons.FnL, "Left Fn"), (DxoButtons.FnR, "Right Fn"),
         };
         var on = new System.Collections.Generic.List<string>();
         foreach (var (bit, name) in names)

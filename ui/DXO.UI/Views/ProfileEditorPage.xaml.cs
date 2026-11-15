@@ -56,14 +56,15 @@ public sealed partial class ProfileEditorPage : Page
 
     private void OnPadsChanged() => UpdateHeader();
 
-    /// Single-click a pill: edit that controller's profile.
-    private void StripPill_Tapped(object sender, TappedRoutedEventArgs e)
+    /// Click a pill, or land focus on it with the D-pad: edit that controller's profile.
+    private void StripPill_Click(object sender, RoutedEventArgs e) => SelectFromPill(sender);
+    private void StripPill_GotFocus(object sender, RoutedEventArgs e) => SelectFromPill(sender);
+
+    private void SelectFromPill(object sender)
     {
-        if ((sender as FrameworkElement)?.DataContext is PadViewModel pad)
-        {
-            App.Device.SelectPad(pad.Slot); // pages follow the selected controller
-            UpdateHeader();
-        }
+        if ((sender as FrameworkElement)?.DataContext is not PadViewModel pad || pad.IsSelected) return;
+        App.Device.SelectPad(pad.Slot); // pages follow the selected controller
+        UpdateHeader();
     }
 
     /// Double-click a pill: open its details card (rename, emulate-as, colour...).
@@ -127,6 +128,7 @@ public sealed partial class ProfileEditorPage : Page
     private void Tabs_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
         if (_loading || sender.SelectedItem?.Tag is not string tag) return;
+        Main?.RememberFocus(); // for the tab being left (LastTab still names it)
         LastTab = tag;
         Open(tag);
     }
@@ -145,7 +147,11 @@ public sealed partial class ProfileEditorPage : Page
         };
         Inner.Navigate(page, "embedded", new SuppressNavigationTransitionInfo());
         Inner.BackStack.Clear();
-        if (Inner.Content is Page p) Embed(p);
+        if (Inner.Content is Page p)
+        {
+            Embed(p);
+            Main?.RestoreFocusWhenLoaded(p);
+        }
         UpdateHeader();
     }
 

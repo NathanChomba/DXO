@@ -11,7 +11,7 @@ namespace DXO.UI.Services;
 public sealed record FoundGame(string Name, string Source, string Exe, string Folder);
 
 /// Finds installed games without any launcher API: reads Steam's library
-/// manifests and Epic's install manifests straight from disk.
+/// manifests, Epic's install manifests and GOG's registry entries directly.
 public static class GameScanner
 {
     public static List<FoundGame> Scan()
@@ -19,6 +19,7 @@ public static class GameScanner
         var games = new List<FoundGame>();
         try { games.AddRange(Steam()); } catch (Exception ex) { App.LogCrash("GameScanner.Steam", ex); }
         try { games.AddRange(Epic()); } catch (Exception ex) { App.LogCrash("GameScanner.Epic", ex); }
+        try { games.AddRange(Gog()); } catch (Exception ex) { App.LogCrash("GameScanner.Gog", ex); }
         return games
             .Where(g => g.Exe.Length > 0)
             .GroupBy(g => g.Exe, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
@@ -90,6 +91,34 @@ public static class GameScanner
             catch { /* skip broken manifests */ }
             if (g is not null) yield return g;
         }
+    }
+
+    // ---- GOG ----
+
+    /// GOG (Galaxy or the offline installers) lists each game under
+    /// HKLM\SOFTWARE\[WOW6432Node\]GOG.com\Games\(id).
+    private static IEnumerable<FoundGame> Gog()
+    {
+        var found = new List<FoundGame>();
+        foreach (string root in new[] { @"SOFTWARE\WOW6432Node\GOG.com\Games", @"SOFTWARE\GOG.com\Games" })
+        {
+            using var games = Registry.LocalMachine.OpenSubKey(root);
+            if (games is null) continue;
+            foreach (string id in games.GetSubKeyNames())
+            {
+                using var g = games.OpenSubKey(id);
+                if (g is null) continue;
+                string name = g.GetValue("gameName") as string ?? "";
+                string folder = g.GetValue("path") as string ?? "";
+                string exe = g.GetValue("exe") as string ?? "";
+                // DLC entries point at their base game: skip them.
+                if (g.GetValue("dependsOn") is string dep && dep.Length > 0) continue;
+                if (name.Length == 0 || !Directory.Exists(folder)) continue;
+                string file = exe.Length > 0 ? Path.GetFileName(exe.Trim('"')) : GuessExe(folder);
+                found.Add(new FoundGame(name, "GOG", file, folder));
+            }
+        }
+        return found;
     }
 
     // ---- exe guess ----

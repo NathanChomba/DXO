@@ -1,0 +1,19 @@
+# Call of Duty: sticks only, tuned for small aim corrections.
+name = "CoD: Classic precision"
+match_process = ["cod.exe"]
+lightbar = [255, 255, 255]
+
+[left_stick]
+deadzone = 0.05
+anti_deadzone = 0.08
+
+[right_stick]
+deadzone = 0.05
+anti_deadzone = 0.1
+curve = { type = "power", exponent = 1.8 }
+
+[trigger_right]
+type = "weapon"
+start = 3
+end = 5
+strength = 4

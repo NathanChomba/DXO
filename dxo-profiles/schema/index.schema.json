@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DXO community profile index",
+  "type": "object",
+  "required": ["schema", "profiles"],
+  "properties": {
+    "schema": { "const": 1 },
+    "name": { "type": "string" },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "game", "category", "controller", "author", "description", "version", "updated", "url"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 80 },
+          "name": { "type": "string", "minLength": 3, "maxLength": 60 },
+          "game": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "category": {
+            "enum": ["Shooter", "Racing", "Action & adventure", "Sports", "Fighting", "Platformer",
+                     "Strategy", "Flight & simulation", "Emulation", "Desktop", "Other"]
+          },
+          "controller": { "enum": ["DualSense", "DualSense Edge", "DualShock 4", "Switch Pro", "Any"] },
+          "author": { "type": "string", "minLength": 1, "maxLength": 39 },
+          "description": { "type": "string", "minLength": 10, "maxLength": 200 },
+          "tags": {
+            "type": "array", "maxItems": 8, "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9 &+-]{0,29}$" }
+          },
+          "version": { "type": "integer", "minimum": 1 },
+          "updated": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "min_dxo": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+          "url": { "type": "string", "pattern": "^profiles/[a-z0-9-]+/[a-z0-9-]+\\.toml$" }
+        }
+      }
+    }
+  }
+}

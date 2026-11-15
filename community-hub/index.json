@@ -1,0 +1,65 @@
+{
+  "name": "DXO community profiles",
+  "profiles": [
+    {
+      "name": "CoD: Gyro aim",
+      "game": "Call of Duty",
+      "category": "Shooter",
+      "author": "DXO",
+      "controller": "DualSense",
+      "description": "Hold L2 to aim with the gyro, right stick for big turns. Weapon click on R2.",
+      "tags": ["gyro", "adaptive triggers"],
+      "url": "profiles/cod-gyro-aim.toml"
+    },
+    {
+      "name": "CoD: Classic precision",
+      "game": "Call of Duty",
+      "category": "Shooter",
+      "author": "DXO",
+      "controller": "Any",
+      "description": "Sticks only. Small deadzones and a curve that slows the first part of the stick for fine aim.",
+      "tags": ["sticks"],
+      "url": "profiles/cod-classic.toml"
+    },
+    {
+      "name": "CoD: Edge paddles",
+      "game": "Call of Duty",
+      "category": "Shooter",
+      "author": "DXO",
+      "controller": "DualSense Edge",
+      "description": "Jump and slide on the back paddles so your thumb stays on the right stick.",
+      "tags": ["paddles"],
+      "url": "profiles/cod-edge-paddles.toml"
+    },
+    {
+      "name": "Forza Horizon 5: Pedal feel",
+      "game": "Forza Horizon 5",
+      "category": "Racing",
+      "author": "DXO",
+      "controller": "DualSense",
+      "description": "Brake resistance on L2, light throttle on R2, fine steering.",
+      "tags": ["adaptive triggers", "steering"],
+      "url": "profiles/fh5-trigger-feel.toml"
+    },
+    {
+      "name": "Forza Horizon 5: Gentle steering",
+      "game": "Forza Horizon 5",
+      "category": "Racing",
+      "author": "DXO",
+      "controller": "Any",
+      "description": "Soft steering near the centre for smooth corners; stronger low rumble for road feel.",
+      "tags": ["steering", "rumble"],
+      "url": "profiles/fh5-gentle.toml"
+    },
+    {
+      "name": "Elden Ring: Comfort",
+      "game": "Elden Ring",
+      "category": "Action & adventure",
+      "author": "DXO",
+      "controller": "DualSense",
+      "description": "Touchpad opens the map; smoothed camera stick; amber breathing light.",
+      "tags": ["comfort"],
+      "url": "profiles/elden-ring-comfort.toml"
+    }
+  ]
+}

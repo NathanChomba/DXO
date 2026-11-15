@@ -34,6 +34,20 @@ Handy shortcuts (hold PS, then press):
   PS + D-pad Up/Down = volume,  PS + D-pad Left = mute
   PS + Touchpad = screenshot,   PS + L3 = show/hide the DXO window
   PS + Share = power off a Bluetooth controller
+  PS + Options = on-screen keyboard (types into any app)
+  PS + R3 = quick menu (media, volume, screenshot...)
+You can change all of these on the Chords page.
+
+New in 0.3
+----------
+- On-screen keyboard and quick menu that work over other apps.
+- Chords page: choose what each PS + button does.
+- Touchpad: two fingers to scroll, pinch to zoom.
+- Games page: your games as a console-style library. Click a game for its
+  details, trailer and Play button. DXO finds Steam, Epic and GOG games and
+  you can add others; it looks up their pictures and descriptions online.
+  Optional: free SteamGridDB and RAWG keys (Settings) give better pictures
+  and more games. You can switch online lookups off in Settings.
 
 Giving feedback
 ---------------

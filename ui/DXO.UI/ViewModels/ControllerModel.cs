@@ -21,6 +21,9 @@ public sealed class ControllerModel
     public string Lightbar { get; set; } = "";
     /// Bluetooth: turn off after this many idle minutes; 0 = never.
     public uint IdleDisconnectMin { get; set; }
+    /// This controller's measured gyro drift. The engine maintains it; it is
+    /// carried here only so saving the card doesn't wipe it.
+    public float[]? GyroBias { get; set; }
 
     /// PS4-style player colours (controllers.rs PLAYER_COLOURS).
     public static readonly Windows.UI.Color[] PlayerColours =

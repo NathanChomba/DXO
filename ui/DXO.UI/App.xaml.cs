@@ -18,6 +18,9 @@ public partial class App : Application
 
     public static AppSettings Settings { get; } = AppSettings.Load();
 
+    /// The on-screen keyboard window (milestone 7). Null until the app has started.
+    public static Overlay.OnScreenKeyboard? Keyboard { get; private set; }
+
     /// "0.2.0", from <Version> in DXO.UI.csproj.
     public static string Version { get; } = typeof(App).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "0.0.0";
 
@@ -100,6 +103,24 @@ public partial class App : Application
                 Engine = new DxoEngine(ProfilesDir, virt);
                 if (Settings.IncludeGeneric) Engine.SetIncludeGeneric(true);
                 Engine.SetChords(Settings.SystemChords);
+                Engine.SetOskEnabled(Settings.OnScreenKeyboard);
+                Engine.SetOskExternal(Settings.UseWindowsKeyboard);
+                // The player's own chords and quick-menu items (a bad save falls back to the defaults).
+                if (Settings.ChordsJson.Length > 0 && !Engine.SetChordsJson(Settings.ChordsJson)) Engine.SetChordsJson("");
+                if (Settings.QuickMenuJson.Length > 0) Engine.SetRadialItemsJson(Settings.QuickMenuJson);
+                // Which exes are games: the keyboard stays shut over a game for a controller
+                // in Native mode. Scanning reads launcher files, so do it off the UI thread.
+                var engine = Engine!;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        var exes = GameScanner.Scan().ConvertAll(g => g.Exe);
+                        foreach (var g in GameLibrary.Load()) if (g.Exe.Length > 0) exes.Add(g.Exe); // games added by hand
+                        engine.SetKnownGames(exes);
+                    }
+                    catch (Exception ex) { LogCrash("KnownGames", ex); }
+                });
             }
             catch (Exception ex) when (ex is DllNotFoundException or InvalidOperationException or EntryPointNotFoundException)
             {
@@ -110,7 +131,16 @@ public partial class App : Application
             MainWindowRef = new MainWindow();
             Device = new DeviceViewModel(MainWindowRef.DispatcherQueue);
             ((MainWindow)MainWindowRef).Start();
-            MainWindowRef.Closed += (_, _) => Engine?.Dispose(); // unhide the pad + unplug the virtual one
+            Keyboard = new Overlay.OnScreenKeyboard(MainWindowRef.DispatcherQueue);
+            PlayTime.Start(MainWindowRef.DispatcherQueue); // counts time played for games in the library
+            Keyboard.Refused += () => ((MainWindow)MainWindowRef!).ShowTrayMessage(
+                "Not available over this game",
+                "This controller is in Native mode, so the game would get every press too. Emulate it as an Xbox 360 or DualShock 4 controller to use the keyboard and quick menu over games.");
+            MainWindowRef.Closed += (_, _) =>
+            {
+                Keyboard?.Shutdown(); // a hidden overlay window would keep the app alive
+                Engine?.Dispose();    // unhide the pad + unplug the virtual one
+            };
             if (!toTray) MainWindowRef.Activate();
         }
         catch (Exception ex)

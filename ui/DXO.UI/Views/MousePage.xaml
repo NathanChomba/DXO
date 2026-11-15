@@ -44,6 +44,14 @@
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE962;" /></controls:SettingsCard.HeaderIcon>
                         <ToggleSwitch x:Name="ClickToggle" Toggled="Toggle_Changed" />
                     </controls:SettingsCard>
+                    <controls:SettingsCard Header="Two fingers scroll" Description="Slide two fingers to scroll up, down and sideways. The page follows your fingers.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8CB;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="ScrollToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Pinch to zoom" Description="Move two fingers apart or together to zoom, in apps that zoom with Ctrl + mouse wheel.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8A3;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="PinchToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Spacing="4">
@@ -63,6 +71,49 @@
                             <TextBlock x:Name="StickSpeedText" Width="70" VerticalAlignment="Center" Style="{StaticResource DxoMono}" />
                         </StackPanel>
                     </controls:SettingsCard>
+                    <controls:SettingsCard Header="Response" Description="How the cursor speeds up as you push the stick further.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9D9;" /></controls:SettingsCard.HeaderIcon>
+                        <ComboBox x:Name="CurveBox" Width="170" SelectionChanged="Curve_Changed">
+                            <x:String>Standard</x:String>
+                            <x:String>Linear</x:String>
+                            <x:String>Precision</x:String>
+                            <x:String>Custom curve</x:String>
+                        </ComboBox>
+                    </controls:SettingsCard>
+                    <!-- custom Bezier curve: two handles, drawn live -->
+                    <Border x:Name="CurvePanel" Style="{StaticResource DxoCard}" Visibility="Collapsed">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <!-- stick push runs left to right, cursor speed bottom to top -->
+                            <Border Width="132" Height="132" BorderThickness="1" BorderBrush="{StaticResource DxoStroke}" CornerRadius="4"
+                                    VerticalAlignment="Top">
+                                <Canvas Width="120" Height="120" Margin="5">
+                                    <Line X1="0" Y1="120" X2="120" Y2="0" Stroke="{StaticResource DxoStroke}" StrokeThickness="1" StrokeDashArray="3,3" />
+                                    <Polyline x:Name="CurveLine" Stroke="{StaticResource DxoAccent}" StrokeThickness="2" />
+                                </Canvas>
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <Slider x:Name="CurveX1" Header="Centre handle: how long it stays slow" Minimum="0" Maximum="1" StepFrequency="0.05" ValueChanged="CurveSlider_Changed" />
+                                <Slider x:Name="CurveY1" Header="Centre handle: speed near the centre" Minimum="0" Maximum="1" StepFrequency="0.05" ValueChanged="CurveSlider_Changed" />
+                                <Slider x:Name="CurveX2" Header="Edge handle: where it starts to rush" Minimum="0" Maximum="1" StepFrequency="0.05" ValueChanged="CurveSlider_Changed" />
+                                <Slider x:Name="CurveY2" Header="Edge handle: speed before the edge" Minimum="0" Maximum="1" StepFrequency="0.05" ValueChanged="CurveSlider_Changed" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="In games" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
+                    <controls:SettingsCard Header="Step aside for full-screen games"
+                                           Description="While a full-screen game or video is in front, the touchpad and stick go back to being a touchpad and a stick. Gyro aiming is not affected.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE740;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="FullscreenToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,6,0,0">
+                        <Ellipse x:Name="FullscreenDot" Width="8" Height="8" VerticalAlignment="Center" />
+                        <TextBlock x:Name="FullscreenText" VerticalAlignment="Center" />
+                    </StackPanel>
                     <Border Style="{StaticResource DxoCard}" Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource DxoCaption}" TextWrapping="Wrap"
                                    Text="Map buttons to mouse clicks on the Buttons tab, and aim by turning the controller on the Motion tab." />

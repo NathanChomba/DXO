@@ -1,0 +1,22 @@
+# Call of Duty: aim with the controller's gyro while L2 is held.
+name = "CoD: Gyro aim"
+match_process = ["cod.exe"]
+lightbar = [40, 200, 90]
+
+[right_stick]
+deadzone = 0.06
+curve = { type = "power", exponent = 1.5 }
+
+[gyro]
+to_mouse = true
+mouse_hold = "l2"
+sensitivity = 1.2
+mouse_deadzone = 0.6
+smoothing = 0.3
+space = "player"
+
+[trigger_right]
+type = "weapon"
+start = 4
+end = 6
+strength = 6

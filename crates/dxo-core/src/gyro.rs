@@ -10,7 +10,7 @@
 //! seconds; we stream pad data to every subscriber that pinged in the last 5 s.
 
 use crate::mapping::button_from_name;
-use crate::profile::GyroConfig;
+use crate::profile::{GyroConfig, GyroSpace};
 use crate::state::PadState;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
@@ -68,6 +68,9 @@ pub enum CalState {
 pub struct Calibrator {
     pub cal: Calibration,
     pub state: CalState,
+    /// Goes up every time the bias is re-measured (so the engine knows when
+    /// there's a new value worth saving for this controller).
+    pub revision: u32,
     manual: bool,
     win_start: Option<Instant>,
     n: u32,
@@ -91,6 +94,16 @@ impl Calibrator {
     /// New controller: its drift is different.
     pub fn reset(&mut self) {
         *self = Calibrator::default();
+    }
+
+    /// Start from the bias saved for this controller last time, so gyro aim
+    /// is steady from the first second instead of after the first rest.
+    /// Auto-calibration keeps refining it from there.
+    pub fn seed(&mut self, bias: [f32; 3]) {
+        if bias.iter().all(|b| b.is_finite() && b.abs() <= Self::MAX_BIAS as f32) {
+            self.cal.gyro_bias = bias;
+            self.state = CalState::Calibrated;
+        }
     }
 
     fn restart_window(&mut self) {
@@ -121,6 +134,7 @@ impl Calibrator {
                 if std < Self::MANUAL_STILL && !big {
                     self.cal.gyro_bias = mean.map(|m| m as f32);
                     self.state = CalState::Calibrated;
+                    self.revision = self.revision.wrapping_add(1);
                 } else {
                     self.state = CalState::Failed;
                 }
@@ -134,6 +148,7 @@ impl Calibrator {
                     mean.map(|m| m as f32)
                 };
                 self.state = CalState::Calibrated;
+                self.revision = self.revision.wrapping_add(1);
             }
         }
         self.restart_window();
@@ -153,12 +168,107 @@ pub fn mouse_hold_active(hold: &str, s: &PadState) -> bool {
     }
 }
 
+// ---- sensor fusion + smoothing -------------------------------------------------
+
+/// Tracks which way is down, in the controller's own axes.
+///
+/// The gyro says how the pad just turned (fast, but drifts); the
+/// accelerometer says where gravity is (noisy, wrong while the pad is being
+/// shaken, but never drifts). Blending the two - the idea at the heart of the
+/// Mahony and Madgwick filters - gives a gravity direction that is both
+/// steady and quick. Gyro aiming uses it for "player space": a sideways turn
+/// is measured about gravity, so it feels the same however the pad is held.
+#[derive(Debug, Clone, Copy)]
+pub struct GravityTracker {
+    /// Unit vector pointing up, in pad axes. Flat on a table = (0, 1, 0).
+    pub up: [f32; 3],
+    seeded: bool,
+}
+
+impl Default for GravityTracker {
+    fn default() -> Self {
+        Self { up: [0.0, 1.0, 0.0], seeded: false }
+    }
+}
+
+impl GravityTracker {
+    /// How quickly the accelerometer pulls the estimate back, per second.
+    const CORRECTION: f32 = 4.0;
+
+    pub fn update(&mut self, gyro_dps: [f32; 3], accel_g: [f32; 3], dt: f32) {
+        let len = |v: [f32; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        let a_len = len(accel_g);
+        // The first trustworthy reading sets the direction outright.
+        if !self.seeded {
+            if (0.8..1.2).contains(&a_len) {
+                self.up = accel_g.map(|v| v / a_len);
+                self.seeded = true;
+            }
+            return;
+        }
+        // 1. Gyro: a direction fixed in the room appears to turn the opposite
+        //    way to the pad:  up' = up - (w x up) dt
+        let w = gyro_dps.map(|d| d.to_radians());
+        let u = self.up;
+        let cross = [w[1] * u[2] - w[2] * u[1], w[2] * u[0] - w[0] * u[2], w[0] * u[1] - w[1] * u[0]];
+        let mut up = [u[0] - cross[0] * dt, u[1] - cross[1] * dt, u[2] - cross[2] * dt];
+        // 2. Accelerometer: lean towards measured gravity, but only when the
+        //    reading is about 1 g (otherwise the pad is being swung around).
+        if (0.85..1.15).contains(&a_len) {
+            let k = (Self::CORRECTION * dt).min(1.0);
+            for i in 0..3 {
+                up[i] += (accel_g[i] / a_len - up[i]) * k;
+            }
+        }
+        let n = len(up);
+        if n > 1e-6 {
+            self.up = up.map(|v| v / n);
+        }
+    }
+
+    /// Turn rate about the vertical (deg/s): the "player space" sideways turn.
+    pub fn yaw_about_up(&self, gyro_dps: [f32; 3]) -> f32 {
+        gyro_dps[0] * self.up[0] + gyro_dps[1] * self.up[1] + gyro_dps[2] * self.up[2]
+    }
+}
+
+/// One-value Kalman filter for a turn rate. It trusts its own estimate while
+/// the readings stay inside the sensor's noise band (so jitter is averaged
+/// away) and jumps to the reading the moment it leaves that band (so a real
+/// turn is never delayed).
+#[derive(Debug, Clone, Copy, Default)]
+struct RateFilter {
+    x: f32,
+    p: f32,
+}
+
+impl RateFilter {
+    /// `noise` = how much the sensor jitters (deg/s, one standard deviation).
+    fn update(&mut self, z: f32, noise: f32) -> f32 {
+        const DRIFT: f32 = 1.5; // how much a real turn rate changes between reports, deg/s
+        let r = noise * noise;
+        self.p += DRIFT * DRIFT;
+        let innovation = z - self.x;
+        // More than 3 standard deviations out: that's movement, not noise.
+        if innovation * innovation > 9.0 * (self.p + r) {
+            self.p += innovation * innovation;
+        }
+        let k = self.p / (self.p + r);
+        self.x += k * innovation;
+        self.p *= 1.0 - k;
+        self.x
+    }
+}
+
 /// Turns calibrated angular velocity into whole-pixel mouse moves, carrying
 /// the fractions so slow turns still move the cursor.
 #[derive(Debug, Default)]
 pub struct GyroMouse {
     last: Option<Instant>,
     rem: (f32, f32),
+    gravity: GravityTracker,
+    yaw_f: RateFilter,
+    pitch_f: RateFilter,
 }
 
 impl GyroMouse {
@@ -166,14 +276,33 @@ impl GyroMouse {
     pub fn step(&mut self, cfg: &GyroConfig, s: &PadState, cal: &Calibration, now: Instant) -> Option<(i32, i32)> {
         let dt = self.last.map(|t| now.duration_since(t).as_secs_f32()).unwrap_or(0.0).min(0.05);
         self.last = Some(now);
+        let g = cal.gyro_dps(s);
+        // Keep following gravity even while aim is off, so it's right the
+        // moment the player squeezes the aim button.
+        if cfg.to_mouse && cfg.space == GyroSpace::Player {
+            self.gravity.update(g, cal.accel_g(s), dt);
+        }
         if !cfg.to_mouse || !mouse_hold_active(&cfg.mouse_hold, s) {
             self.rem = (0.0, 0.0);
             return None;
         }
-        let g = cal.gyro_dps(s);
+        // Ratchet: the button is held, so the player is re-centring their
+        // hands. Like lifting a mouse off the mat: nothing moves.
+        if !cfg.ratchet.trim().is_empty() && mouse_hold_active(&cfg.ratchet, s) {
+            return None;
+        }
         // Right-hand rule on Sony pads: turning right = negative yaw,
         // tipping the front up = positive pitch.
-        let (yaw, pitch) = (g[1], g[0]);
+        let (mut yaw, mut pitch) = (g[1], g[0]);
+        if cfg.space == GyroSpace::Player {
+            yaw = self.gravity.yaw_about_up(g);
+        }
+        let smooth = cfg.smoothing.clamp(0.0, 1.0);
+        if smooth > 0.0 {
+            let noise = 0.3 + 5.0 * smooth;
+            yaw = self.yaw_f.update(yaw, noise);
+            pitch = self.pitch_f.update(pitch, noise);
+        }
         let dz = cfg.mouse_deadzone.max(0.0);
         let soft = |v: f32| if v.abs() <= dz { 0.0 } else { v - dz * v.signum() };
         let k = cfg.sensitivity.max(0.0) * PX_PER_DEG * dt;
@@ -407,6 +536,134 @@ mod tests {
         }
         // 0.4 s * 90 deg/s * 10 px/deg = 360 px
         assert!((x - 360).abs() <= 2, "x = {x}");
+    }
+
+    #[test]
+    fn ratchet_pauses_aim_while_held() {
+        let cfg = GyroConfig { to_mouse: true, mouse_deadzone: 0.0, mouse_hold: String::new(), ratchet: "r1".into(), ..Default::default() };
+        let mut m = GyroMouse::default();
+        let cal = Calibration::default();
+        let t0 = Instant::now();
+        let mut s = PadState::default();
+        s.gyro = [0, -16 * 90, 0];
+        m.step(&cfg, &s, &cal, t0);
+        assert!(m.step(&cfg, &s, &cal, t0 + Duration::from_millis(20)).is_some(), "aiming normally");
+        s.buttons.set(crate::state::Buttons::R1, true);
+        for i in 2..20u64 {
+            assert_eq!(m.step(&cfg, &s, &cal, t0 + Duration::from_millis(i * 20)), None, "ratchet held: frozen");
+        }
+        s.buttons.set(crate::state::Buttons::R1, false);
+        // released: aim resumes without a jump for the time it was paused
+        let (dx, _) = m.step(&cfg, &s, &cal, t0 + Duration::from_millis(400)).unwrap();
+        assert!((15..=20).contains(&dx), "one report's worth (90 deg/s * 20 ms * 10 px = 18), got {dx}");
+    }
+
+    #[test]
+    fn smoothing_quiets_jitter_but_follows_a_flick() {
+        // resting pad: +-2 deg/s of sensor noise around zero
+        let noisy = |i: usize| [1.9f32, -1.3, 0.4, -2.0, 1.1, -0.2, 1.6, -1.7][i % 8];
+        let mut f = RateFilter::default();
+        let (mut raw_sq, mut out_sq) = (0.0f32, 0.0f32);
+        for i in 0..400 {
+            let z = noisy(i);
+            let x = f.update(z, 0.3 + 5.0 * 0.6);
+            if i >= 50 {
+                raw_sq += z * z;
+                out_sq += x * x;
+            }
+        }
+        assert!(out_sq < raw_sq * 0.25, "jitter energy cut by 4x or more: {out_sq} vs {raw_sq}");
+
+        // a sudden 300 deg/s flick must come straight through
+        let first = f.update(300.0, 0.3 + 5.0 * 0.6);
+        assert!(first > 270.0, "no lag on a real turn, got {first}");
+        // and a steady turn is reported as it is
+        let mut x = 0.0;
+        for _ in 0..50 {
+            x = f.update(300.0, 3.3);
+        }
+        assert!((x - 300.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn smoothing_off_is_bit_identical() {
+        let mk = |smoothing| GyroConfig { to_mouse: true, mouse_deadzone: 0.0, mouse_hold: String::new(), smoothing, ..Default::default() };
+        let cal = Calibration::default();
+        let t0 = Instant::now();
+        let mut s = PadState::default();
+        let run = |cfg: &GyroConfig, s: &mut PadState| {
+            let mut m = GyroMouse::default();
+            let mut total = 0;
+            for i in 0..=100u64 {
+                s.gyro = [0, -16 * 40 + (i as i16 % 5) * 16, 0];
+                if let Some((dx, _)) = m.step(cfg, s, &cal, t0 + Duration::from_millis(i * 4)) {
+                    total += dx;
+                }
+            }
+            total
+        };
+        let off = run(&mk(0.0), &mut s);
+        let on = run(&mk(1.0), &mut s);
+        assert!(off > 100);
+        // smoothing must not change how far a steady turn moves the cursor (to within a few px)
+        assert!((off - on).abs() <= 4, "off {off}, smoothed {on}");
+    }
+
+    #[test]
+    fn gravity_tracker_follows_a_tilt() {
+        let mut g = GravityTracker::default();
+        // flat on the table
+        for _ in 0..50 {
+            g.update([0.0; 3], [0.0, 1.0, 0.0], 0.004);
+        }
+        assert!((g.up[1] - 1.0).abs() < 1e-3);
+        // now held nose-up at 45 degrees: gravity splits between Y and Z
+        let tilt = [0.0, 0.70710677, 0.70710677];
+        for _ in 0..500 {
+            g.update([0.0; 3], tilt, 0.004);
+        }
+        assert!((g.up[1] - 0.707).abs() < 0.02 && (g.up[2] - 0.707).abs() < 0.02, "{:?}", g.up);
+        // being shaken (3 g) must not move the estimate
+        let before = g.up;
+        for _ in 0..100 {
+            g.update([0.0; 3], [3.0, 0.0, 0.0], 0.004);
+        }
+        assert_eq!(g.up, before);
+    }
+
+    #[test]
+    fn player_space_yaw_is_the_same_flat_or_tilted() {
+        // Turning about the vertical at 90 deg/s. Held flat, that is pure pad-yaw;
+        // tilted 45 degrees nose-up, the same turn shows up half on yaw, half on roll.
+        let flat = GravityTracker { up: [0.0, 1.0, 0.0], seeded: true };
+        assert!((flat.yaw_about_up([0.0, -90.0, 0.0]) + 90.0).abs() < 1e-3);
+        let h = 0.70710677;
+        let tilted = GravityTracker { up: [0.0, h, h], seeded: true };
+        let world = tilted.yaw_about_up([0.0, -90.0 * h, -90.0 * h]);
+        assert!((world + 90.0).abs() < 0.1, "{world}");
+        // local space would only have seen 64 deg/s of it
+        assert!((-90.0 * h + 63.64f32).abs() < 0.1);
+    }
+
+    #[test]
+    fn seeded_bias_starts_calibrated() {
+        let mut c = Calibrator::default();
+        c.seed([12.0, -7.5, 3.0]);
+        assert_eq!(c.state, CalState::Calibrated);
+        assert_eq!(c.cal.gyro_bias, [12.0, -7.5, 3.0]);
+        // garbage from a damaged file is refused
+        let mut c = Calibrator::default();
+        c.seed([f32::NAN, 0.0, 0.0]);
+        assert_eq!(c.state, CalState::Uncalibrated);
+        c.seed([9000.0, 0.0, 0.0]);
+        assert_eq!(c.state, CalState::Uncalibrated);
+        // and a re-measurement bumps the revision so the engine re-saves it
+        let t0 = Instant::now();
+        let r0 = c.revision;
+        for i in 0..300u64 {
+            c.feed([20, -12, 5], t0 + Duration::from_millis(i * 4));
+        }
+        assert!(c.revision > r0);
     }
 
     #[test]

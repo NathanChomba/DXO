@@ -36,6 +36,11 @@ pub struct ControllerSettings {
     /// Bluetooth only: turn the controller off after this many minutes
     /// without input. 0 = never.
     pub idle_disconnect_min: u32,
+    /// This controller's gyro drift at rest (raw units), as last measured.
+    /// Loaded at connect so gyro aim is steady straight away; DXO keeps it
+    /// up to date by itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gyro_bias: Option<[f32; 3]>,
 }
 
 impl Default for ControllerSettings {
@@ -49,6 +54,7 @@ impl Default for ControllerSettings {
             game_profiles: BTreeMap::new(),
             lightbar: String::new(),
             idle_disconnect_min: 0,
+            gyro_bias: None,
         }
     }
 }
@@ -117,6 +123,11 @@ impl ControllerStore {
             self.save();
         }
         self.map[id].clone()
+    }
+
+    /// Some controller has its own profile rule for this exe (so it is a game).
+    pub fn knows_game(&self, exe: &str) -> bool {
+        self.map.values().any(|c| c.game_profiles.keys().any(|k| k.eq_ignore_ascii_case(exe)))
     }
 
     pub fn get(&self, id: &str) -> Option<ControllerSettings> {
@@ -212,6 +223,7 @@ mod tests {
         c.name = "Caesar's PS4".into();
         c.target = VirtualTarget::None;
         c.game_profiles.insert("eldenring.exe".into(), "Souls".into());
+        c.gyro_bias = Some([12.5, -3.0, 0.25]);
         s.set(c.clone());
         let back = ControllerStore::load(Some(path)).get("sony-a4b1c2d3e4f5").unwrap();
         assert_eq!(back, c);

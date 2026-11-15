@@ -1,0 +1,10 @@
+# Call of Duty on a DualSense Edge: jump and slide on the back paddles,
+# so your right thumb never leaves the stick.
+name = "CoD: Edge paddles"
+match_process = ["cod.exe"]
+remap = [["paddle_r", "cross"], ["paddle_l", "circle"]]
+lightbar = [255, 60, 30]
+
+[right_stick]
+deadzone = 0.06
+curve = { type = "power", exponent = 1.5 }

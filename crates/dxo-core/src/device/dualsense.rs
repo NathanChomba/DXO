@@ -87,7 +87,11 @@ pub fn parse_input(report: &[u8]) -> Result<PadState> {
     b.set(Buttons::HOME, b2 & 0x01 != 0);
     b.set(Buttons::TOUCHPAD, b2 & 0x02 != 0);
     b.set(Buttons::MUTE, b2 & 0x04 != 0);
-    // DualSense Edge back paddles (verify on hardware - M6)
+    // DualSense Edge extras (same byte on a plain DualSense reads 0):
+    // Fn buttons under the sticks and the two back paddles. Layout as in SDL's
+    // PS5 driver; still to be confirmed on a real Edge.
+    b.set(Buttons::FN_L, b2 & 0x10 != 0);
+    b.set(Buttons::FN_R, b2 & 0x20 != 0);
     b.set(Buttons::PADDLE_L, b2 & 0x40 != 0);
     b.set(Buttons::PADDLE_R, b2 & 0x80 != 0);
 

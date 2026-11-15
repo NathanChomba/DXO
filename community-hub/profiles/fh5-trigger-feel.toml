@@ -1,0 +1,21 @@
+# Forza Horizon 5: brake pedal resistance on L2, light throttle on R2,
+# fine steering on the left stick.
+name = "Forza Horizon 5: Pedal feel"
+match_process = ["ForzaHorizon5.exe"]
+lightbar = [255, 0, 140]
+rumble_strength = 1.3
+
+[left_stick]
+deadzone = 0.03
+anti_deadzone = 0.12
+curve = { type = "linear" }
+
+[trigger_left]
+type = "feedback"
+start = 1
+strength = 6
+
+[trigger_right]
+type = "feedback"
+start = 2
+strength = 2

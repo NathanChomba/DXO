@@ -7,12 +7,17 @@
 
 use crate::device::Kind;
 use crate::state::Transport;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-/// Adaptive trigger effect (DualSense only).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+/// Adaptive trigger effect (DualSense only). Saved in profiles, so a game
+/// profile can carry its own trigger feel.
+///
+/// Positions run 0 (released) to 9 (fully pulled); strengths 1..=8.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
 pub enum TriggerEffect {
     #[default]
     Off,
@@ -20,15 +25,27 @@ pub enum TriggerEffect {
     Feedback { start: u8, strength: u8 },
     /// Click like a gun trigger between `start` (2..=7) and `end` (start+1..=8).
     Weapon { start: u8, end: u8, strength: u8 },
-    /// Raw 11-byte effect block for experimenting (M5 UDP telemetry).
-    Raw([u8; 11]),
+    /// Buzzes from `start` (0..=9) on: `amplitude` 1..=8 at `frequency` Hz.
+    Vibration { start: u8, amplitude: u8, frequency: u8 },
+    /// A bow string: resists between `start` and `end` (`strength`), then
+    /// lets go with a kick (`snap`), both 1..=8.
+    Bow { start: u8, end: u8, strength: u8, snap: u8 },
+    /// A two-beat thump (hooves, a heartbeat). `first_foot` < `second_foot`,
+    /// 0..=7: where in each cycle the two beats land.
+    Galloping { start: u8, end: u8, first_foot: u8, second_foot: u8, frequency: u8 },
+    /// Automatic fire: alternates between two strengths (`amplitude_a/b`,
+    /// 0..=7) at `frequency` Hz; `period` is the length of each, in tenths of a second.
+    Machine { start: u8, end: u8, amplitude_a: u8, amplitude_b: u8, frequency: u8, period: u8 },
+    /// Raw 11-byte effect block for experimenting.
+    Raw { data: [u8; 11] },
 }
 
 impl TriggerEffect {
     pub fn encode(self) -> [u8; 11] {
         let mut d = [0u8; 11];
+        d[0] = 0x05; // "off": what every invalid combination falls back to
         match self {
-            TriggerEffect::Off => d[0] = 0x05,
+            TriggerEffect::Off => {}
             TriggerEffect::Feedback { start, strength } => {
                 let start = start.min(9);
                 let force = (strength.clamp(1, 8) - 1) as u32;
@@ -50,7 +67,57 @@ impl TriggerEffect {
                 d[1..3].copy_from_slice(&zones.to_le_bytes());
                 d[3] = strength.clamp(1, 8) - 1;
             }
-            TriggerEffect::Raw(raw) => d = raw,
+            TriggerEffect::Vibration { start, amplitude, frequency } => {
+                if amplitude > 0 && frequency > 0 {
+                    let start = start.min(9);
+                    let amp = (amplitude.clamp(1, 8) - 1) as u32;
+                    let mut zones: u16 = 0;
+                    let mut amps: u32 = 0;
+                    for i in start..10 {
+                        zones |= 1 << i;
+                        amps |= amp << (3 * i as u32);
+                    }
+                    d[0] = 0x26;
+                    d[1..3].copy_from_slice(&zones.to_le_bytes());
+                    d[3..7].copy_from_slice(&amps.to_le_bytes());
+                    d[9] = frequency;
+                }
+            }
+            TriggerEffect::Bow { start, end, strength, snap } => {
+                let start = start.min(7);
+                let end = end.clamp(start + 1, 8);
+                let zones: u16 = (1 << start) | (1 << end);
+                let pair = ((strength.clamp(1, 8) - 1) & 7) | (((snap.clamp(1, 8) - 1) & 7) << 3);
+                d[0] = 0x22;
+                d[1..3].copy_from_slice(&zones.to_le_bytes());
+                d[3] = pair;
+            }
+            TriggerEffect::Galloping { start, end, first_foot, second_foot, frequency } => {
+                if frequency > 0 {
+                    let start = start.min(8);
+                    let end = end.clamp(start + 1, 9);
+                    let second = second_foot.clamp(1, 7);
+                    let first = first_foot.min(second - 1).min(6);
+                    let zones: u16 = (1 << start) | (1 << end);
+                    d[0] = 0x23;
+                    d[1..3].copy_from_slice(&zones.to_le_bytes());
+                    d[3] = (second & 7) | ((first & 7) << 3);
+                    d[4] = frequency;
+                }
+            }
+            TriggerEffect::Machine { start, end, amplitude_a, amplitude_b, frequency, period } => {
+                if frequency > 0 {
+                    let start = start.min(8);
+                    let end = end.clamp(start + 1, 9);
+                    let zones: u16 = (1 << start) | (1 << end);
+                    d[0] = 0x27;
+                    d[1..3].copy_from_slice(&zones.to_le_bytes());
+                    d[3] = (amplitude_a.min(7) & 7) | ((amplitude_b.min(7) & 7) << 3);
+                    d[4] = frequency;
+                    d[5] = period;
+                }
+            }
+            TriggerEffect::Raw { data } => d = data,
         }
         d
     }
@@ -207,6 +274,36 @@ mod tests {
         let d = TriggerEffect::Feedback { start: 8, strength: 8 }.encode();
         assert_eq!(d[0], 0x21);
         assert_eq!(u16::from_le_bytes([d[1], d[2]]), 0b11_0000_0000);
+    }
+
+    #[test]
+    fn preset_effect_encodings() {
+        // Layouts follow Nielk1's DualSense trigger-effect notes.
+        let d = TriggerEffect::Bow { start: 1, end: 6, strength: 6, snap: 8 }.encode();
+        assert_eq!(d[0], 0x22);
+        assert_eq!(u16::from_le_bytes([d[1], d[2]]), (1 << 1) | (1 << 6));
+        assert_eq!(d[3], 5 | (7 << 3));
+
+        let d = TriggerEffect::Vibration { start: 5, amplitude: 8, frequency: 30 }.encode();
+        assert_eq!(d[0], 0x26);
+        assert_eq!(u16::from_le_bytes([d[1], d[2]]), 0b11_1110_0000);
+        assert_eq!(d[9], 30);
+        let amps = u32::from_le_bytes([d[3], d[4], d[5], d[6]]);
+        assert_eq!((amps >> 15) & 7, 7, "zone 5 at full amplitude");
+        assert_eq!(amps & 0x7FFF, 0, "nothing before the start position");
+
+        let d = TriggerEffect::Machine { start: 2, end: 9, amplitude_a: 7, amplitude_b: 3, frequency: 12, period: 2 }.encode();
+        assert_eq!((d[0], d[3], d[4], d[5]), (0x27, 7 | (3 << 3), 12, 2));
+
+        let d = TriggerEffect::Galloping { start: 0, end: 9, first_foot: 2, second_foot: 5, frequency: 4 }.encode();
+        assert_eq!((d[0], d[3], d[4]), (0x23, 5 | (2 << 3), 4));
+
+        // Nonsense input never produces a half-formed effect: it falls back to "off".
+        assert_eq!(TriggerEffect::Vibration { start: 0, amplitude: 0, frequency: 0 }.encode()[0], 0x05);
+        assert_eq!(TriggerEffect::Machine { start: 9, end: 0, amplitude_a: 9, amplitude_b: 9, frequency: 0, period: 0 }.encode()[0], 0x05);
+        // ...and out-of-range positions are clamped, not shifted off the end.
+        let d = TriggerEffect::Bow { start: 200, end: 0, strength: 0, snap: 99 }.encode();
+        assert_eq!(u16::from_le_bytes([d[1], d[2]]), (1 << 7) | (1 << 8));
     }
 
     #[test]

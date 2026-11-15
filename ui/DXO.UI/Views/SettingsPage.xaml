@@ -45,6 +45,40 @@
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEDA7;" /></controls:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="ChordToggle" Toggled="Chord_Toggled" />
             </controls:SettingsCard>
+            <controls:SettingsCard Header="On-screen keyboard"
+                                   Description="Hold PS and press Options to type in any app with the controller. Cross/A presses the highlighted key, Square/X is Backspace, Triangle/Y is Space, Options is Enter, L3 is Shift, L2 switches to symbols, Circle/B closes it. The keys can also be clicked or tapped. Needs controller shortcuts (above) to be on. Over a game it only opens while the controller is emulated as an Xbox 360 or DualShock 4 pad.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="KeyboardToggle" Toggled="Keyboard_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard x:Name="WinKeyboardCard" Header="Use the Windows gamepad keyboard instead (experimental)" Visibility="Collapsed"
+                                   Description="PS + Options opens Windows 11's own on-screen keyboard instead of DXO's, but only for a controller emulated as an Xbox 360 pad; every other case still gets DXO's keyboard. Windows decides whether it appears in its gamepad layout, and recent Windows 11 updates are needed for that layout.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE92E;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="WinKeyboardToggle" Toggled="WinKeyboard_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Keyboard size" Description="How big the on-screen keyboard is drawn. 100% is half the width of the screen.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE740;" /></controls:SettingsCard.HeaderIcon>
+                <Slider x:Name="KeyboardSizeSlider" Width="220" Minimum="60" Maximum="150" StepFrequency="10" ValueChanged="KeyboardSize_Changed" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Look games up online"
+                                   Description="When you add a game, suggest matches as you type and fill in its details and pictures; and find a backdrop for games that have none. DXO contacts Steam's store (and SteamGridDB and RAWG if you add keys below) only at those moments, and keeps the pictures on this PC.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE774;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="OnlineToggle" Toggled="Online_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="SteamGridDB key (optional)"
+                                   Description="Better backdrops and covers, and games Steam doesn't sell. Free: sign in at steamgriddb.com, then Preferences, API. The key is saved on this PC only.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8D7;" /></controls:SettingsCard.HeaderIcon>
+                <PasswordBox x:Name="SgdbKeyBox" Width="260" PlaceholderText="Paste your key" LostFocus="Keys_LostFocus" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="RAWG key (optional)"
+                                   Description="Details for games Steam doesn't know. Free for personal use: Get API Key at rawg.io/apidocs. The key is saved on this PC only.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8D7;" /></controls:SettingsCard.HeaderIcon>
+                <PasswordBox x:Name="RawgKeyBox" Width="260" PlaceholderText="Paste your key" LostFocus="Keys_LostFocus" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Low battery warning"
+                                   Description="A Windows notification when a controller drops to 20%, and again at 10%, so it doesn't die mid-game. Set a profile's light bar to &quot;Battery level&quot; to see the charge on the pad itself.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE850;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="BatteryToggle" Toggled="Battery_Toggled" />
+            </controls:SettingsCard>
 
             <TextBlock Text="Animations" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Window animation scale" Description="The controller card growing out of a pill and closing again.">

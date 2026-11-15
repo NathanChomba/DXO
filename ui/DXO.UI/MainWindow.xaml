@@ -94,13 +94,13 @@
 
         <!-- ===== Nav + content ===== -->
         <NavigationView x:Name="Nav" Grid.Row="2"
-                        PaneDisplayMode="Left"
+                        PaneDisplayMode="LeftCompact"
                         OpenPaneLength="220"
                         CompactModeThresholdWidth="0"
                         ExpandedModeThresholdWidth="1000"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="True"
-                        IsPaneToggleButtonVisible="True"
+                        IsPaneToggleButtonVisible="False"
                         SelectionChanged="Nav_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Home" Tag="home">
@@ -112,6 +112,9 @@
                 <NavigationViewItem Content="Profiles" Tag="profiles">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE77B;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Community" Tag="community">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE716;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
 
                 <NavigationViewItemSeparator />
                 <NavigationViewItemHeader Content="Configure" />
@@ -122,6 +125,9 @@
                 <NavigationViewItemSeparator />
                 <NavigationViewItem Content="Games" Tag="games">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Chords" Tag="chords">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xEDA7;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
@@ -137,6 +143,18 @@
         </NavigationView>
 
         <!-- ===== Controller card: grows out of the pill you click ===== -->
+        <!-- Controller navigation: shown while a controller could drive the window
+             but nothing is highlighted yet, so the first press never feels dead. -->
+        <Border x:Name="NavCue" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18"
+                Padding="14,8" CornerRadius="16" BorderThickness="1" IsHitTestVisible="False" Visibility="Collapsed"
+                Background="{StaticResource DxoSurfaceLow}" BorderBrush="{StaticResource DxoAccent}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon Glyph="&#xE7FC;" FontSize="14" Foreground="{StaticResource DxoAccent}" />
+                <TextBlock Text="Press the D-pad or left stick to start  ·  Cross selects  ·  Circle goes back"
+                           FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
         <Grid x:Name="IslandLayer" Grid.RowSpan="3" Visibility="Collapsed">
             <Border x:Name="IslandScrim" Background="#59080810" Opacity="0" Tapped="Scrim_Tapped" />
             <Canvas>

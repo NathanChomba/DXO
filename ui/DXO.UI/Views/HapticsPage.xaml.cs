@@ -36,7 +36,8 @@ public sealed partial class HapticsPage : Page
     {
         _model = ProfileStore.Active();
         bool ok = _model is not null;
-        foreach (var c in new Control[] { PassToggle, StrengthSlider, SwapToggle, AudioToggle, VolumeSlider, SaveButton, TestHeavy, TestLight, TestBoth })
+        foreach (var c in new Control[] { PassToggle, StrengthSlider, SwapToggle, AudioToggle, VolumeSlider, SaveButton, TestHeavy, TestLight, TestBoth,
+                                          FloorSlider, CeilingSlider, CurveSlider, AudioRumbleToggle, AudioGainSlider })
             c.IsEnabled = ok;
         if (_model is null) { SaveStatus.Text = "The engine isn't running."; return; }
 
@@ -46,7 +47,13 @@ public sealed partial class HapticsPage : Page
         SwapToggle.IsOn = _model.RumbleSwap;
         AudioToggle.IsOn = _model.ControllerAudio;
         VolumeSlider.Value = _model.AudioVolume;
+        FloorSlider.Value = Math.Clamp(Math.Round(_model.RumbleShape.Floor * 100), 0, 50);
+        CeilingSlider.Value = Math.Clamp(Math.Round(_model.RumbleShape.Ceiling * 100), 50, 100);
+        CurveSlider.Value = Math.Clamp(_model.RumbleShape.Curve, 0.4, 2.5);
+        AudioRumbleToggle.IsOn = _model.AudioHaptics.Mode == "rumble";
+        AudioGainSlider.Value = Math.Clamp(_model.AudioHaptics.Gain, 0.2, 4);
         _loading = false;
+        AudioRumbleInfo.IsOpen = !DXO.UI.Native.DxoEngine.HasAudioHaptics;
 
         SubTitle.Text = $"Editing \"{_model.Name}\" (the active profile). Changes apply straight away; Save keeps them.";
         SaveStatus.Text = "";
@@ -62,6 +69,11 @@ public sealed partial class HapticsPage : Page
         _model.RumbleSwap = SwapToggle.IsOn;
         _model.ControllerAudio = AudioToggle.IsOn;
         _model.AudioVolume = (byte)Math.Clamp(Math.Round(VolumeSlider.Value), 0, 100);
+        _model.RumbleShape.Floor = (float)(FloorSlider.Value / 100.0);
+        _model.RumbleShape.Ceiling = (float)(CeilingSlider.Value / 100.0);
+        _model.RumbleShape.Curve = (float)Math.Round(CurveSlider.Value, 1);
+        _model.AudioHaptics.Mode = AudioRumbleToggle.IsOn ? "rumble" : "off";
+        _model.AudioHaptics.Gain = (float)Math.Round(AudioGainSlider.Value, 1);
         SaveStatus.Text = ProfileStore.ApplyActive(_model)
             ? $"Applied. Save to keep it in \"{_model.Name}\"."
             : "The engine rejected that setting.";
@@ -70,10 +82,18 @@ public sealed partial class HapticsPage : Page
 
     private void UpdateLabels()
     {
-        if (StrengthText is null || VolumeText is null) return;
+        if (StrengthText is null || VolumeText is null || FloorText is null || CeilingText is null || CurveText is null || AudioGainText is null) return;
         StrengthText.Text = $"{StrengthSlider.Value:0}%";
         VolumeText.Text = $"{VolumeSlider.Value:0}%";
-        StrengthSlider.IsEnabled = SwapToggle.IsEnabled = PassToggle.IsOn && _model is not null;
+        FloorText.Text = FloorSlider.Value <= 0 ? "Off" : $"{FloorSlider.Value:0}%";
+        CeilingText.Text = $"{CeilingSlider.Value:0}%";
+        CurveText.Text = $"{CurveSlider.Value:0.0}";
+        AudioGainText.Text = $"{AudioGainSlider.Value:0.0}x";
+        bool audioBuilt = DXO.UI.Native.DxoEngine.HasAudioHaptics;
+        AudioRumbleToggle.IsEnabled = audioBuilt && _model is not null;
+        AudioGainSlider.IsEnabled = audioBuilt && AudioRumbleToggle.IsOn && _model is not null;
+        StrengthSlider.IsEnabled = SwapToggle.IsEnabled = FloorSlider.IsEnabled = CeilingSlider.IsEnabled = CurveSlider.IsEnabled =
+            PassToggle.IsOn && _model is not null;
         VolumeSlider.IsEnabled = AudioToggle.IsOn && _model is not null;
     }
 

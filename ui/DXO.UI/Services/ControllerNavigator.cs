@@ -24,6 +24,11 @@ public sealed class ControllerNavigator
     private int _dir;            // held focus direction (0 none, 1 up, 2 down, 3 left, 4 right)
     private DateTime _nextRepeat;
     private bool _active;        // DXO window is foreground
+    private bool _afterKeyboard; // the on-screen keyboard just closed: wait for the buttons to be let go
+
+    /// The player has driven the window with the controller (so pages put
+    /// focus somewhere sensible when they open, instead of leaving it nowhere).
+    public bool UsingPad { get; private set; }
 
     // Key-repeat feel, and a stick deadzone with hysteresis so it doesn't chatter.
     private static readonly TimeSpan FirstDelay = TimeSpan.FromMilliseconds(350);
@@ -50,10 +55,21 @@ public sealed class ControllerNavigator
         if (!_active || Suspended || !App.Settings.ControllerNavigation || App.Engine is not { } eng)
         {
             _prev = 0; _dir = 0;
+            _win.NavSetCue(false);
             return;
         }
+        // The on-screen keyboard has the pad: its D-pad and Cross are for keys, not for DXO.
+        if (eng.OskOpen || eng.GetRadial().Open != 0) { _afterKeyboard = true; _prev = 0; _dir = 0; return; }
         var n = eng.GetNav();
-        if (n.Connected == 0) { _prev = 0; _dir = 0; return; }
+        if (n.Connected == 0) { _prev = 0; _dir = 0; _win.NavSetCue(false); return; }
+        if (_afterKeyboard)
+        {
+            // Circle closed the keyboard and is still down: it must not also be "back".
+            if (n.Buttons != 0) return;
+            _afterKeyboard = false;
+        }
+        // A controller could drive the window but nothing is highlighted: say how to start.
+        _win.NavSetCue(!_win.NavHasFocus);
 
         uint b = n.Buttons;
         // PS is the chord modifier: while it's held, these buttons drive the
@@ -76,6 +92,8 @@ public sealed class ControllerNavigator
                 dir = MathF.Abs(n.Lx) > MathF.Abs(n.Ly) ? (n.Lx > 0 ? 4 : 3) : (n.Ly > 0 ? 1 : 2); // +Y = up
         }
 
+        if (dir != 0 || (b & ~_prev) != 0) UsingPad = true;
+
         var now = DateTime.UtcNow;
         if (dir == 0) _dir = 0;
         else if (dir != _dir) { _dir = dir; _nextRepeat = now + FirstDelay; Move(dir); }
@@ -86,7 +104,7 @@ public sealed class ControllerNavigator
         if (Edge(DxoButtons.East)) _win.NavBack();        // Circle / B
         if (Edge(DxoButtons.L1)) _win.NavCycle(-1);       // previous page / tab
         if (Edge(DxoButtons.R1)) _win.NavCycle(+1);       // next page / tab
-        if (Edge(DxoButtons.Start)) _win.NavTogglePane(); // Options: show/hide the menu
+        if (Edge(DxoButtons.Start)) _win.NavTogglePane(); // Options: the page's own details (Games); the menu stays collapsed
         if (Edge(DxoButtons.Home)) _win.NavHome();        // PS: Home
 
         // ---- right stick scroll ----

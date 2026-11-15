@@ -30,6 +30,9 @@ impl Buttons {
     // Edge back paddles / Fn (M6)
     pub const PADDLE_L: u32 = 1 << 19;
     pub const PADDLE_R: u32 = 1 << 20;
+    // DualSense Edge function buttons (under the sticks)
+    pub const FN_L: u32 = 1 << 21;
+    pub const FN_R: u32 = 1 << 22;
 
     #[inline]
     pub fn set(&mut self, bit: u32, on: bool) {

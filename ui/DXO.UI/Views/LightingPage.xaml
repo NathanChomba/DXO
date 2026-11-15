@@ -8,7 +8,7 @@
     <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Padding="{StaticResource DxoPagePadding}" Spacing="4">
             <TextBlock Text="Lighting" Style="{StaticResource DxoPageTitle}" />
-            <TextBlock Text="Light bar colour and player indicator LEDs. A controller shows the profile's colour when its card (click its pill above) is set to &quot;Profile's colour&quot;; otherwise it shows its player colour or its own." Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+            <TextBlock x:Name="SubTitle" Text="The light bar's colour and effect, saved with the profile. A controller shows this colour when its card (click its pill above) is set to &quot;Profile's colour&quot;; otherwise it keeps its player colour or its own. The effect applies either way." Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
             <SelectorBar x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
                 <SelectorBarItem Text="Light bar" IsSelected="True" />
@@ -25,17 +25,29 @@
                 <StackPanel Spacing="4">
                     <controls:SettingsCard Header="Brightness" Description="How bright the light bar is.">
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></controls:SettingsCard.HeaderIcon>
-                        <Slider x:Name="Brightness" Width="160" Minimum="0" Maximum="100" Value="90" ValueChanged="Brightness_ValueChanged" />
+                        <Slider x:Name="Brightness" Width="160" Minimum="5" Maximum="100" Value="100" StepFrequency="5" ValueChanged="Slider_Changed" />
                     </controls:SettingsCard>
 
-                    <TextBlock Text="Mode" Style="{StaticResource DxoSectionTitle}" />
-                    <RadioButtons x:Name="LightMode" SelectedIndex="0">
-                        <RadioButton Content="Static colour" />
-                        <RadioButton Content="Multi colour (coming later)" IsEnabled="False" />
-                        <RadioButton Content="Breathing (coming later)" IsEnabled="False" />
-                        <RadioButton Content="Strobe (coming later)" IsEnabled="False" />
-                        <RadioButton Content="Battery level (coming later)" IsEnabled="False" />
+                    <TextBlock Text="Effect" Style="{StaticResource DxoSectionTitle}" />
+                    <RadioButtons x:Name="LightMode" SelectedIndex="0" SelectionChanged="Mode_Changed">
+                        <RadioButton Content="Steady" />
+                        <RadioButton Content="Breathing: fades up and down" />
+                        <RadioButton Content="Pulse: a short blink" />
+                        <RadioButton Content="Rainbow: cycles the colours" />
+                        <RadioButton Content="Battery level: green when full, red when low" />
                     </RadioButtons>
+                    <controls:SettingsCard x:Name="SpeedCard" Header="Speed">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEC4A;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="SpeedSlider" Width="160" Minimum="1" Maximum="12" StepFrequency="0.5" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="SpeedText" Width="70" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Flash with rumble" Description="The light bar flares towards white while the controller vibrates.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE945;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="FlashToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
+                    <TextBlock x:Name="ModeHint" Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="4,4,0,0" />
                 </StackPanel>
 
                 <Border Grid.Column="1" Style="{StaticResource DxoCard}">
@@ -74,7 +86,11 @@
                 </RadioButtons>
             </StackPanel>
 
-            <Button Content="Reset to profile" Margin="0,12,0,0" Click="Reset_Click" />
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
+                <Button x:Name="SaveButton" Content="Save to profile" Style="{StaticResource AccentButtonStyle}" Click="Save_Click" />
+                <Button Content="Stop LED preview" Click="Reset_Click" ToolTipService.ToolTip="Player LEDs are a live preview; this goes back to what the profile shows" />
+                <TextBlock x:Name="SaveStatus" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" />
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

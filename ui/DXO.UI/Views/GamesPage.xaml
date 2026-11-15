@@ -13,9 +13,11 @@
         </Grid.RowDefinitions>
 
         <StackPanel>
-            <TextBlock Text="Games" Style="{StaticResource DxoPageTitle}" />
+            <HyperlinkButton Content="&#x2190; Back to the game library" Click="Library_Click" Padding="0" />
+            <TextBlock Text="Game profiles" Style="{StaticResource DxoPageTitle}" />
             <TextBlock Style="{StaticResource DxoCaption}"
                        Text="Give a game its own profile and DXO switches to it whenever that game is in front. Games without one use whatever profile is active." />
+            <InfoBar x:Name="SteamInfo" IsOpen="False" IsClosable="True" Severity="Warning" Title="Steam Input" Margin="0,8,0,0" />
         </StackPanel>
 
         <!-- toolbar -->

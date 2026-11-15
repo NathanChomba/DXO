@@ -23,6 +23,15 @@ public sealed partial class SettingsPage : Page
         GenericToggle.IsOn = App.Settings.IncludeGeneric;
         NavToggle.IsOn = App.Settings.ControllerNavigation;
         ChordToggle.IsOn = App.Settings.SystemChords;
+        BatteryToggle.IsOn = App.Settings.LowBatteryWarning;
+        KeyboardToggle.IsOn = App.Settings.OnScreenKeyboard;
+        OnlineToggle.IsOn = App.Settings.OnlineGameLookups;
+        SgdbKeyBox.Password = App.Settings.SteamGridDbKey;
+        RawgKeyBox.Password = App.Settings.RawgKey;
+        WinKeyboardToggle.IsOn = App.Settings.UseWindowsKeyboard;
+        // Windows 10 has no gamepad keyboard layout: don't offer it there.
+        if (Environment.OSVersion.Version.Build >= 22000) WinKeyboardCard.Visibility = Visibility.Visible;
+        KeyboardSizeSlider.Value = Math.Clamp(Math.Round(App.Settings.KeyboardScale * 100), 60, 150);
         UpdateSourceBox.Text = App.Settings.UpdateSource;
         UpdateToggle.IsOn = App.Settings.CheckUpdatesOnStart;
         UpdateCard.Description = $"You have DXO {App.Version}.";
@@ -107,6 +116,53 @@ public sealed partial class SettingsPage : Page
         App.Settings.SystemChords = ChordToggle.IsOn;
         App.Settings.Save();
         App.Engine?.SetChords(ChordToggle.IsOn);
+    }
+
+    private void Keyboard_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.OnScreenKeyboard = KeyboardToggle.IsOn;
+        App.Settings.Save();
+        App.Engine?.SetOskEnabled(KeyboardToggle.IsOn);
+    }
+
+    private void Online_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.OnlineGameLookups = OnlineToggle.IsOn;
+        App.Settings.Save();
+    }
+
+    private void Keys_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        string sgdb = SgdbKeyBox.Password.Trim(), rawg = RawgKeyBox.Password.Trim();
+        if (sgdb == App.Settings.SteamGridDbKey && rawg == App.Settings.RawgKey) return;
+        App.Settings.SteamGridDbKey = sgdb;
+        App.Settings.RawgKey = rawg;
+        App.Settings.Save();
+    }
+
+    private void WinKeyboard_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.UseWindowsKeyboard = WinKeyboardToggle.IsOn;
+        App.Settings.Save();
+        App.Engine?.SetOskExternal(WinKeyboardToggle.IsOn);
+    }
+
+    private void KeyboardSize_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.KeyboardScale = e.NewValue / 100.0;
+        App.Settings.Save(); // an open keyboard resizes on its next refresh
+    }
+
+    private void Battery_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.LowBatteryWarning = BatteryToggle.IsOn;
+        App.Settings.Save();
     }
 
     private void Start_Toggled(object sender, RoutedEventArgs e)

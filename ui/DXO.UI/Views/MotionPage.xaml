@@ -144,10 +144,61 @@
                         <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8CB;" /></controls:SettingsCard.HeaderIcon>
                         <ToggleSwitch x:Name="InvertYToggle" Toggled="Toggle_Changed" />
                     </controls:SettingsCard>
+                    <controls:SettingsCard Header="Pause while holding (ratchet)"
+                                           Description="Hold this to freeze the aim while you bring the controller back to a comfortable position, like lifting a mouse.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE769;" /></controls:SettingsCard.HeaderIcon>
+                        <ComboBox x:Name="RatchetBox" Width="220" SelectionChanged="Combo_Changed">
+                            <x:String>Off</x:String>
+                            <x:String>R1</x:String>
+                            <x:String>L1</x:String>
+                            <x:String>R2</x:String>
+                            <x:String>L2</x:String>
+                            <x:String>R3 (right stick click)</x:String>
+                            <x:String>Square</x:String>
+                            <x:String>Touching the touchpad</x:String>
+                        </ComboBox>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Smoothing" Description="Filters sensor jitter out of slow movement. Quick turns pass straight through, so it adds no lag to a flick. 0 = off.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9E9;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="SmoothSlider" Width="180" Minimum="0" Maximum="1" StepFrequency="0.05" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="SmoothText" Width="40" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Sideways is measured" Description="By gravity: turning left and right aims left and right however you hold the controller (uses the accelerometer).">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE81D;" /></controls:SettingsCard.HeaderIcon>
+                        <ComboBox x:Name="SpaceBox" Width="220" SelectionChanged="Combo_Changed">
+                            <x:String>By the controller</x:String>
+                            <x:String>By gravity (player space)</x:String>
+                        </ComboBox>
+                    </controls:SettingsCard>
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,6,0,0">
                         <Ellipse x:Name="MouseDot" Width="8" Height="8" VerticalAlignment="Center" />
                         <TextBlock x:Name="MouseText" VerticalAlignment="Center" />
                     </StackPanel>
+
+                    <TextBlock Text="Flick stick" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
+                    <controls:SettingsCard Header="Right stick turns the view by its angle"
+                                           Description="Push the stick right for a quarter turn, back for an about-turn; sweep it round the edge to keep turning. Games stop seeing the right stick. Pair it with gyro for the fine aim.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7AD;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="FlickToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Mouse pixels per full turn" Description="Depends on the game's mouse sensitivity. Use Test spin to find it.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72C;" /></controls:SettingsCard.HeaderIcon>
+                        <NumberBox x:Name="FlickPx" Width="140" Minimum="200" Maximum="100000" SmallChange="50" LargeChange="500"
+                                   SpinButtonPlacementMode="Compact" ValueChanged="Number_Changed" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Flick time" Description="How long a flick takes. 0 = instant.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="FlickTime" Width="180" Minimum="0" Maximum="300" StepFrequency="10" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="FlickTimeText" Width="60" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Test spin" Description="Click, switch to the game within 3 seconds, and watch: the view should turn exactly once. More than once: lower the number. Less: raise it.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE768;" /></controls:SettingsCard.HeaderIcon>
+                        <Button x:Name="SpinButton" Content="Test spin" Click="Spin_Click" />
+                    </controls:SettingsCard>
 
                     <TextBlock Text="Emulators" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
                     <controls:SettingsCard Header="CemuHook motion server (DSU)"

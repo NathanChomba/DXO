@@ -13,7 +13,7 @@ use std::ffi::{c_char, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
-pub const DXO_ABI_VERSION: u32 = 11; // 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav), 10: system chords, 11: diag-active gate
+pub const DXO_ABI_VERSION: u32 = 13; // 13: milestone 7 (on-screen keyboard, quick menu, editable chords); 12: 0.3 profile fields (chords, stages, flick, light, triggers), features, fullscreen, test spin; earlier: 2: virtual-device controls, 3: profile editor, 4: motion, 5: diagnostics, 6: DS4 target + other pads, 7: multiple controllers, 8: per-controller settings, 9: controller navigation (raw nav), 10: system chords, 11: diag-active gate
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -424,6 +424,245 @@ pub unsafe extern "C" fn dxo_set_diag_active(h: *mut Engine, on: u8) {
     })
 }
 
+/// The on-screen keyboard as the UI draws it (12 bytes). ABI 13.
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DxoOsk {
+    pub open: u8,
+    /// 0 lower case, 1 upper case, 2 symbols: fetch the layout again when it changes.
+    pub layer: u8,
+    /// 0 off, 1 next letter only, 2 caps lock.
+    pub shift: u8,
+    /// Highlighted key: row, then index within that row.
+    pub row: u8,
+    pub key: u8,
+    /// Slot of the controller typing on it; 255 = closed.
+    pub owner: u8,
+    pub _pad: [u8; 2],
+    /// Goes up by one for every key typed (flash the highlighted key).
+    pub presses: u32,
+}
+
+/// Current state of the on-screen keyboard. Returns 1 while it is open. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_osk(h: *mut Engine, out: *mut DxoOsk) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(out)) = (engine(h), out.as_mut()) else { return 0 };
+        let v = e.osk_view();
+        *out = DxoOsk {
+            open: v.open as u8,
+            layer: v.layer,
+            shift: v.shift,
+            row: v.row,
+            key: v.key,
+            owner: e.osk_owner().map_or(255, |s| s as u8),
+            _pad: [0; 2],
+            presses: v.presses,
+        };
+        v.open as u8
+    })
+}
+
+/// The keys of the layer on show, as JSON:
+/// `{"cols":11,"rows":[[{"label":"q","col":0,"span":1,"kind":"char"},...],...]}`.
+/// Same two-call buffer pattern as the other string getters. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_osk_layout_json(h: *mut Engine, buf: *mut u8, len: usize) -> usize {
+    guard(0, || copy_str(engine(h).map(|e| e.osk_layout_json()).unwrap_or_default(), buf, len))
+}
+
+/// Open (1) or close (0) the on-screen keyboard from the UI; the selected
+/// controller types on it. Returns 0 if it couldn't open (no controller). ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_osk_set_open(h: *mut Engine, open: u8) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.set_osk_open(open != 0) as u8))
+}
+
+/// Let PS + Options open the on-screen keyboard (Settings). ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_osk_enabled(h: *mut Engine, on: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.set_osk_enabled(on != 0);
+        }
+    })
+}
+
+/// 1 if the keyboard was asked for but refused since the last call (a game is
+/// in front and the controller is in Native mode). ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_take_osk_refused(h: *mut Engine) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.take_osk_refused() as u8))
+}
+
+/// Tell the engine which games are installed: exe names separated by new
+/// lines ("eldenring.exe\nhades.exe"). Used to tell a game from an app. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_known_games(h: *mut Engine, exes: *const c_char) {
+    guard((), || {
+        let Some(e) = engine(h) else { return };
+        if exes.is_null() {
+            e.set_known_games(Vec::new());
+            return;
+        }
+        if let Ok(text) = CStr::from_ptr(exes).to_str() {
+            e.set_known_games(text.lines().map(str::to_string));
+        }
+    })
+}
+
+/// A key clicked with the mouse or tapped on a touch screen: `row` and the
+/// key's index within that row, as in the layout JSON. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_osk_click(h: *mut Engine, row: u8, key: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.osk_click(row, key);
+        }
+    })
+}
+
+/// Settings: PS + Options opens Windows' own gamepad keyboard for a
+/// controller emulated as an Xbox pad (the UI opens it). ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_osk_external(h: *mut Engine, on: u8) {
+    guard((), || {
+        if let Some(e) = engine(h) {
+            e.set_osk_external(on != 0);
+        }
+    })
+}
+
+/// 1 if the UI should open or close Windows' keyboard now. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_take_osk_external_toggle(h: *mut Engine) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.take_osk_external_toggle() as u8))
+}
+
+/// The quick menu as the UI draws it (12 bytes). ABI 13.
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DxoRadial {
+    pub open: u8,
+    /// Pointed-at item; 255 = none.
+    pub selected: u8,
+    pub count: u8,
+    /// Slot of the controller driving it; 255 = closed.
+    pub owner: u8,
+    /// Changes when the items change: fetch the layout again.
+    pub rev: u32,
+    /// Goes up each time an item is carried out.
+    pub fired: u32,
+}
+
+/// Current state of the quick menu. Returns 1 while it is open. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_radial(h: *mut Engine, out: *mut DxoRadial) -> u8 {
+    guard(0, || {
+        let (Some(e), Some(out)) = (engine(h), out.as_mut()) else { return 0 };
+        let v = e.radial_view();
+        *out = DxoRadial {
+            open: v.open as u8,
+            selected: v.selected,
+            count: v.count,
+            owner: e.radial_owner().map_or(255, |s| s as u8),
+            rev: v.rev,
+            fired: v.fired,
+        };
+        v.open as u8
+    })
+}
+
+/// Quick-menu items for drawing: `{"items":[{"label":"Mute","type":"mute"}]}`. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_radial_layout_json(h: *mut Engine, buf: *mut u8, len: usize) -> usize {
+    guard(0, || copy_str(engine(h).map(|e| e.radial_layout_json()).unwrap_or_default(), buf, len))
+}
+
+/// Quick-menu items with their actions, for the editor:
+/// `[{"label":"Mute","action":{"type":"mute"}}]`. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_radial_items_json(h: *mut Engine, buf: *mut u8, len: usize) -> usize {
+    guard(0, || copy_str(engine(h).map(|e| e.radial_items_json()).unwrap_or_default(), buf, len))
+}
+
+/// Replace the quick-menu items (same JSON as the getter; `[]` = defaults).
+/// Returns 0 if the JSON was rejected. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_radial_items_json(h: *mut Engine, json: *const c_char) -> u8 {
+    guard(0, || {
+        let Some(e) = engine(h) else { return 0 };
+        if json.is_null() {
+            return 0;
+        }
+        CStr::from_ptr(json).to_str().map_or(0, |j| e.set_radial_items_json(j) as u8)
+    })
+}
+
+/// Open (1) or close (0) the quick menu from the UI. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_radial_set_open(h: *mut Engine, open: u8) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.set_radial_open(open != 0) as u8))
+}
+
+/// The system chord table: `[{"button":"share","action":{"type":"power_off"}}]`. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_get_chords_json(h: *mut Engine, buf: *mut u8, len: usize) -> usize {
+    guard(0, || copy_str(engine(h).map(|e| e.chords_json()).unwrap_or_default(), buf, len))
+}
+
+/// Replace the chord table (same JSON as the getter). An empty string
+/// restores the defaults. Returns 0 if the JSON was rejected. ABI 13.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_set_chords_json(h: *mut Engine, json: *const c_char) -> u8 {
+    guard(0, || {
+        let Some(e) = engine(h) else { return 0 };
+        if json.is_null() {
+            return 0;
+        }
+        CStr::from_ptr(json).to_str().map_or(0, |j| e.set_chords_json(j) as u8)
+    })
+}
+
+/// What this build of the engine can do. Bit 0: sound-driven rumble
+/// (built with the `audio-haptics` feature). ABI 12.
+#[no_mangle]
+pub extern "C" fn dxo_features() -> u32 {
+    crate::haptics::AVAILABLE as u32
+}
+
+/// 1 while a full-screen game or video is in front (touchpad/stick-as-mouse
+/// stand down if the profile says so). ABI 12.
+#[no_mangle]
+pub unsafe extern "C" fn dxo_is_fullscreen(h: *mut Engine) -> u8 {
+    guard(0, || engine(h).map_or(0, |e| e.fullscreen() as u8))
+}
+
+/// Flick-stick calibration: after `delay_ms` (time to click back into the
+/// game), move the mouse `px` pixels to the right over about half a second.
+/// If the view turns exactly once, `px` is that game's pixels-per-turn. ABI 12.
+#[no_mangle]
+pub extern "C" fn dxo_test_spin(px: i32, delay_ms: u32) {
+    guard((), || {
+        let px = px.clamp(-200_000, 200_000);
+        let delay = std::time::Duration::from_millis(delay_ms.min(10_000) as u64);
+        let _ = std::thread::Builder::new().name("dxo-spin".into()).spawn(move || {
+            std::thread::sleep(delay);
+            for step in spin_steps(px, 60) {
+                if step != 0 {
+                    crate::gyro::move_mouse(step, 0);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(8));
+            }
+        });
+    })
+}
+
+/// Split `total` into `n` near-equal moves that add up to exactly `total`.
+fn spin_steps(total: i32, n: i32) -> Vec<i32> {
+    (1..=n).map(|i| (total as i64 * i as i64 / n as i64 - total as i64 * (i - 1) as i64 / n as i64) as i32).collect()
+}
+
 /// Unhide, unplug the virtual pad, reconnect and hide again.
 #[no_mangle]
 pub unsafe extern "C" fn dxo_reconnect(h: *mut Engine) {
@@ -695,6 +934,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_spin_adds_up_exactly() {
+        for total in [6000, 7919, -5001, 1, 0, 59] {
+            let steps = spin_steps(total, 60);
+            assert_eq!(steps.len(), 60);
+            assert_eq!(steps.iter().sum::<i32>(), total, "total {total}");
+            let (lo, hi) = (steps.iter().min().unwrap(), steps.iter().max().unwrap());
+            assert!(hi - lo <= 1, "evenly spread: {lo}..{hi}");
+        }
+    }
+
+    #[test]
     fn layout_is_stable() {
         // Must match [StructLayout(LayoutKind.Sequential)] in DxoNative.cs
         assert_eq!(std::mem::size_of::<DxoState>(), 64);
@@ -703,5 +953,7 @@ mod tests {
         assert_eq!(std::mem::size_of::<DxoMotion>(), 32);
         assert_eq!(std::mem::size_of::<DxoTiming>(), 32);
         assert_eq!(std::mem::size_of::<DxoPadInfo>(), 192);
+        assert_eq!(std::mem::size_of::<DxoOsk>(), 12);
+        assert_eq!(std::mem::size_of::<DxoRadial>(), 12);
     }
 }

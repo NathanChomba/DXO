@@ -34,9 +34,10 @@
                     <SelectorBar x:Name="LayerBar" SelectionChanged="LayerBar_SelectionChanged">
                         <SelectorBarItem x:Name="NormalItem" Text="Normal" IsSelected="True" />
                         <SelectorBarItem x:Name="ShiftItem" Text="Shift layer" />
+                        <SelectorBarItem x:Name="CombosItem" Text="Combos" />
                     </SelectorBar>
                     <TextBlock x:Name="LayerHint" Grid.Column="1" Style="{StaticResource DxoCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <StackPanel x:Name="ShiftPicker" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock Text="Hold for shift layer" VerticalAlignment="Center" />
                         <ComboBox x:Name="ShiftBox" Width="180" DisplayMemberPath="Label" SelectionChanged="ShiftBox_SelectionChanged" />
                     </StackPanel>
@@ -54,6 +55,11 @@
                 <dxo:ControllerVisualizer x:Name="Visual" />
             </Border>
             <Border Grid.Row="1" Style="{StaticResource DxoCard}" Padding="4">
+                <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <ListView x:Name="ButtonList" SelectionMode="Single" SelectionChanged="ButtonList_SelectionChanged">
                     <ListView.ItemTemplate>
                         <DataTemplate>
@@ -68,6 +74,14 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
+                <!-- combos: add / remove -->
+                <StackPanel x:Name="ComboBar" Grid.Row="1" Orientation="Horizontal" Spacing="8" Padding="8,6" Visibility="Collapsed">
+                    <Button Click="AddCombo_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE710;" FontSize="14" /><TextBlock Text="Add combo" /></StackPanel>
+                    </Button>
+                    <Button x:Name="RemoveComboButton" Content="Remove" Click="RemoveCombo_Click" />
+                </StackPanel>
+                </Grid>
             </Border>
         </Grid>
 
@@ -76,7 +90,30 @@
             <StackPanel x:Name="Editor" Spacing="4" Padding="0,0,8,0">
                 <TextBlock x:Name="EditTitle" Style="{StaticResource DxoSectionTitle}" Margin="0,0,0,6" />
 
-                <controls:SettingsCard Header="Does">
+                <!-- combos: which two buttons -->
+                <StackPanel x:Name="ComboPanel" Spacing="4" Visibility="Collapsed">
+                    <controls:SettingsCard Header="First button">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
+                        <ComboBox x:Name="ComboA" Width="190" DisplayMemberPath="Label" SelectionChanged="Changed" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Second button">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7FC;" /></controls:SettingsCard.HeaderIcon>
+                        <ComboBox x:Name="ComboB" Width="190" DisplayMemberPath="Label" SelectionChanged="Changed" />
+                    </controls:SettingsCard>
+                </StackPanel>
+
+                <!-- one button, three timings -->
+                <SelectorBar x:Name="PressBar" Margin="-12,0,0,2" SelectionChanged="PressBar_SelectionChanged">
+                    <SelectorBarItem x:Name="PressItem" Text="Press" IsSelected="True" />
+                    <SelectorBarItem x:Name="HoldItem" Text="Hold" />
+                    <SelectorBarItem x:Name="DoubleItem" Text="Double-tap" />
+                </SelectorBar>
+                <controls:SettingsCard x:Name="SlotCard" Header="Do something else when held" Visibility="Collapsed">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch x:Name="SlotToggle" Toggled="Toggle_Changed" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard x:Name="TypeCard" Header="Does">
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8AB;" /></controls:SettingsCard.HeaderIcon>
                     <ComboBox x:Name="TypeBox" Width="190" SelectionChanged="TypeBox_SelectionChanged">
                         <x:String>Itself (normal)</x:String>
@@ -85,6 +122,7 @@
                         <x:String>Mouse</x:String>
                         <x:String>Nothing (disabled)</x:String>
                         <x:String>Macro (a sequence)</x:String>
+                        <x:String>Open an app, file or link</x:String>
                     </ComboBox>
                 </controls:SettingsCard>
 
@@ -92,6 +130,15 @@
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7C9;" /></controls:SettingsCard.HeaderIcon>
                     <ComboBox x:Name="TargetBox" Width="190" DisplayMemberPath="Label" SelectionChanged="Changed" />
                 </controls:SettingsCard>
+
+                <!-- launch -->
+                <StackPanel x:Name="LaunchPanel" Spacing="6" Visibility="Collapsed">
+                    <TextBox x:Name="LaunchTarget" Header="What to open" PlaceholderText="C:\Program Files\App\app.exe, a folder, or https://..."
+                             LostFocus="Launch_LostFocus" KeyDown="Launch_KeyDown" />
+                    <TextBox x:Name="LaunchArgs" Header="Arguments (optional, programs only)" PlaceholderText="--minimized"
+                             LostFocus="Launch_LostFocus" KeyDown="Launch_KeyDown" />
+                    <Button Content="Browse..." Click="LaunchBrowse_Click" />
+                </StackPanel>
 
                 <!-- macro editor -->
                 <StackPanel x:Name="MacroPanel" Spacing="6" Visibility="Collapsed">
@@ -120,6 +167,42 @@
                     <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B1;" /></controls:SettingsCard.HeaderIcon>
                     <ToggleSwitch x:Name="ToggleToggle" Toggled="Toggle_Changed" />
                 </controls:SettingsCard>
+
+                <!-- tap / hold / double-tap timing (whole profile) -->
+                <StackPanel x:Name="TimingPanel" Spacing="4" Visibility="Collapsed">
+                    <controls:SettingsCard Header="Hold time" Description="How long a press must last to count as a hold. Applies to every button in this profile.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="HoldMsSlider" Width="130" Minimum="150" Maximum="800" StepFrequency="10" ValueChanged="Timing_Changed" />
+                            <TextBlock x:Name="HoldMsText" Width="56" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Double-tap window" Description="The second press must come within this long. A single tap waits this long before it fires.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="DoubleMsSlider" Width="130" Minimum="150" Maximum="500" StepFrequency="10" ValueChanged="Timing_Changed" />
+                            <TextBlock x:Name="DoubleMsText" Width="56" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                </StackPanel>
+
+                <!-- dual-stage trigger points (whole profile) -->
+                <StackPanel x:Name="StagePanel" Spacing="4" Visibility="Collapsed">
+                    <controls:SettingsCard Header="Soft pull starts at" Description="How far the trigger is pulled before the soft-pull mapping begins.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9E9;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="SoftSlider" Width="130" Minimum="5" Maximum="60" StepFrequency="1" ValueChanged="Timing_Changed" />
+                            <TextBlock x:Name="SoftText" Width="44" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Full pull starts at" Description="How far before the full-pull mapping begins. Both triggers share these points.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9E9;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="FullSlider" Width="130" Minimum="50" Maximum="100" StepFrequency="1" ValueChanged="Timing_Changed" />
+                            <TextBlock x:Name="FullText" Width="44" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                </StackPanel>
 
                 <Button x:Name="ResetButton" Content="Reset this button" Click="Reset_Click" Margin="0,8,0,0" />
                 <TextBlock x:Name="Hint" Style="{StaticResource DxoCaption}" TextWrapping="Wrap" Margin="0,8,0,0" />

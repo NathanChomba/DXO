@@ -71,6 +71,7 @@ public sealed partial class GamesPage : Page
 {
     private const string NoProfile = "No profile (use the active one)";
     private const string SameAsAll = "Same as all controllers";
+    private const string NewForGame = "+ New profile for this game";
 
     private static List<FoundGame>? _scanCache; // scanning walks folders; do it once per run
     private readonly List<GameRow> _all = new();
@@ -90,13 +91,14 @@ public sealed partial class GamesPage : Page
         _profiles = ProfileStore.All();
         if (rescan || _scanCache is null)
         {
-            ShowEmpty("Looking for Steam and Epic games...", busy: true);
+            ShowEmpty("Looking for Steam, Epic and GOG games...", busy: true);
             try { _scanCache = await Task.Run(() => GameScanner.Scan()); }
             catch (Exception ex) { App.LogCrash("Games scan", ex); _scanCache = new(); }
         }
 
         var choices = new List<string> { NoProfile };
         choices.AddRange(_profiles.Select(p => p.Model.Name));
+        choices.Add(NewForGame); // always last
         var padChoices = new List<string> { SameAsAll };
         padChoices.AddRange(_profiles.Select(p => p.Model.Name));
 
@@ -128,8 +130,23 @@ public sealed partial class GamesPage : Page
             _all.Add(row);
         }
         Filter();
+        ShowSteamAdvice();
         int linked = _all.Count(r => r.Assigned > 0);
         StatusText.Text = $"{_all.Count} games  ·  {linked} with their own profile";
+    }
+
+    /// Steam has its own controller remapper: warn when it and DXO would both act on a pad.
+    private async void ShowSteamAdvice()
+    {
+        try
+        {
+            var pads = App.Engine?.ListPads() ?? new List<PadInfo>();
+            var status = await Task.Run(SteamInput.Check);
+            string? advice = SteamInput.Advice(status, pads);
+            SteamInfo.Message = advice ?? "";
+            SteamInfo.IsOpen = advice is not null;
+        }
+        catch (Exception ex) { App.LogCrash("Games.ShowSteamAdvice", ex); }
     }
 
     private int AssignedIndex(string exe)
@@ -170,6 +187,12 @@ public sealed partial class GamesPage : Page
         if (sender is not ComboBox cb || cb.DataContext is not GameRow row) return;
         int pick = cb.SelectedIndex;
         if (pick < 0 || pick == row.Assigned) return; // initial binding / recycled row
+        if (pick == row.Choices.Count - 1) // "+ New profile for this game"
+        {
+            cb.SelectedIndex = row.Assigned; // until the new profile exists
+            CreateProfileFor(row);
+            return;
+        }
         if (Assign(row.Exe, pick))
         {
             row.Assigned = pick;
@@ -180,6 +203,25 @@ public sealed partial class GamesPage : Page
         {
             cb.SelectedIndex = row.Assigned;
         }
+    }
+
+    /// A fresh profile named after the game, copied from "Default", already
+    /// tied to the game's exe: no typing of exe names.
+    private async void CreateProfileFor(GameRow row)
+    {
+        try
+        {
+            if (!Assign(row.Exe, 0)) return; // no other profile may keep claiming this game
+            var start = _profiles.FirstOrDefault(p => p.Model.Name.Equals("Default", StringComparison.OrdinalIgnoreCase)).Model;
+            var m = start?.Clone() ?? new ProfileModel();
+            m.Name = row.Name;
+            m.MatchProcess = new List<string> { row.Exe };
+            string? name = ProfileTransfer.Add(m);
+            if (name is null) { StatusText.Text = "Couldn't create a profile for that game."; return; }
+            await Reload(rescan: false);
+            StatusText.Text = $"Created \"{name}\" for {row.Name}. Edit it on the Profiles page; DXO switches to it when the game is in front.";
+        }
+        catch (Exception ex) { App.LogCrash("Games.CreateProfileFor", ex); }
     }
 
     /// Put `exe` in profile `pick` (1-based; 0 = none) and take it out of every other profile.
@@ -283,5 +325,10 @@ public sealed partial class GamesPage : Page
         SearchBox.Text = name ?? exe;
         Filter();
         StatusText.Text = $"Added {exe}. Pick a profile for it on the right.";
+    }
+
+    private void Library_Click(object sender, RoutedEventArgs e)
+    {
+        if (((App)Application.Current).MainWindowRef is MainWindow w) w.ShowLibrary();
     }
 }

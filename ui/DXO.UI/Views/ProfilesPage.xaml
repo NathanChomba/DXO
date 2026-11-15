@@ -50,6 +50,31 @@
                     <Button Click="OpenFolder_Click" ToolTipService.ToolTip="Open profiles folder">
                         <FontIcon Glyph="&#xE838;" FontSize="14" />
                     </Button>
+                    <DropDownButton ToolTipService.ToolTip="Import, export, back up, community profiles"
+                                    AutomationProperties.Name="Import, export and backup">
+                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="TopEdgeAlignedLeft">
+                                <MenuFlyoutItem Text="Import a profile..." Click="Import_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B5;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Name="ExportItem" Text="Export this profile..." Click="Export_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Back up everything..." Click="Backup_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Restore a backup..." Click="Restore_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Community profiles" Click="Hub_Click">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE774;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
                 </StackPanel>
             </Grid>
         </Border>
@@ -85,15 +110,22 @@
                             <controls:SettingsCard Header="Outer limit" Description="Reach full tilt before the physical edge">
                                 <Slider x:Name="LOuter" Width="220" Minimum="0.5" Maximum="1" StepFrequency="0.01" ValueChanged="Slider_Changed" />
                             </controls:SettingsCard>
-                            <controls:SettingsCard Header="Response curve" Description="Power: finer aim near the centre. Smooth: blend.">
+                            <controls:SettingsCard Header="Response curve" Description="Power: finer aim near the centre. Smooth: blend. Presets fill in a ready-made curve.">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <ComboBox x:Name="LCurve" Width="120" SelectionChanged="Curve_Changed">
                                         <x:String>Linear</x:String>
                                         <x:String>Power</x:String>
                                         <x:String>Smooth</x:String>
+                                        <x:String>Preset: Precision</x:String>
+                                        <x:String>Preset: Aggressive</x:String>
+                                        <x:String>Preset: Gentle</x:String>
+                                        <x:String>Custom (from file)</x:String>
                                     </ComboBox>
                                     <Slider x:Name="LCurveParam" Width="140" Minimum="0.2" Maximum="3" StepFrequency="0.05" ValueChanged="Slider_Changed" />
                                 </StackPanel>
+                            </controls:SettingsCard>
+                            <controls:SettingsCard Header="Anti-deadzone" Description="Cancels the game's own deadzone, so the smallest push already moves. Set it to the size of the game's deadzone; 0 = off.">
+                                <Slider x:Name="LAnti" Width="220" Minimum="0" Maximum="0.4" StepFrequency="0.01" ValueChanged="Slider_Changed" />
                             </controls:SettingsCard>
                             <controls:SettingsCard Header="Invert Y">
                                 <ToggleSwitch x:Name="LInvert" Toggled="Toggle_Changed" />
@@ -115,9 +147,16 @@
                                         <x:String>Linear</x:String>
                                         <x:String>Power</x:String>
                                         <x:String>Smooth</x:String>
+                                        <x:String>Preset: Precision</x:String>
+                                        <x:String>Preset: Aggressive</x:String>
+                                        <x:String>Preset: Gentle</x:String>
+                                        <x:String>Custom (from file)</x:String>
                                     </ComboBox>
                                     <Slider x:Name="RCurveParam" Width="140" Minimum="0.2" Maximum="3" StepFrequency="0.05" ValueChanged="Slider_Changed" />
                                 </StackPanel>
+                            </controls:SettingsCard>
+                            <controls:SettingsCard Header="Anti-deadzone" Description="Cancels the game's own deadzone; 0 = off.">
+                                <Slider x:Name="RAnti" Width="220" Minimum="0" Maximum="0.4" StepFrequency="0.01" ValueChanged="Slider_Changed" />
                             </controls:SettingsCard>
                             <controls:SettingsCard Header="Invert Y">
                                 <ToggleSwitch x:Name="RInvert" Toggled="Toggle_Changed" />

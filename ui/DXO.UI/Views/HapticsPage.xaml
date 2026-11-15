@@ -44,6 +44,29 @@
                         <ToggleSwitch x:Name="SwapToggle" Toggled="Toggle_Changed" />
                     </controls:SettingsCard>
 
+                    <TextBlock Text="Shaping" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
+                    <controls:SettingsCard Header="Low-rumble boost" Description="The weakest rumble plays at least this strong, so faint effects the motors would swallow can be felt.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE74A;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="FloorSlider" Width="180" Minimum="0" Maximum="50" StepFrequency="1" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="FloorText" Width="44" VerticalAlignment="Center" Style="{StaticResource DxoMono}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Ceiling" Description="Nothing plays stronger than this.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE74B;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="CeilingSlider" Width="180" Minimum="50" Maximum="100" StepFrequency="1" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="CeilingText" Width="44" VerticalAlignment="Center" Style="{StaticResource DxoMono}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Response" Description="Below 1.0 lifts quiet rumble; above 1.0 tames it and keeps the big hits.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9D9;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="CurveSlider" Width="180" Minimum="0.4" Maximum="2.5" StepFrequency="0.1" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="CurveText" Width="44" VerticalAlignment="Center" Style="{StaticResource DxoMono}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+
                     <TextBlock Text="Test" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
                     <Border Style="{StaticResource DxoCard}">
                         <StackPanel Spacing="10">
@@ -79,10 +102,25 @@
                     <InfoBar x:Name="AudioInfo" IsOpen="True" IsClosable="False" Severity="Informational" Margin="0,4,0,0"
                              Message="Works over USB only. Over Bluetooth the controller needs a special audio format that DXO can't send yet." />
 
-                    <TextBlock Text="DualSense haptics" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
-                    <Border Style="{StaticResource DxoCard}">
+                    <TextBlock Text="Rumble from sound" Style="{StaticResource DxoSectionTitle}" Margin="0,12,0,6" />
+                    <controls:SettingsCard Header="Bass shakes the controller"
+                                           Description="Explosions, engines and kick drums in whatever the PC is playing drive the rumble motors. Works with any controller, wired or Bluetooth, even in games with no rumble of their own.">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8D6;" /></controls:SettingsCard.HeaderIcon>
+                        <ToggleSwitch x:Name="AudioRumbleToggle" Toggled="Toggle_Changed" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Sensitivity">
+                        <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE9E9;" /></controls:SettingsCard.HeaderIcon>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Slider x:Name="AudioGainSlider" Width="180" Minimum="0.2" Maximum="4" StepFrequency="0.1" ValueChanged="Slider_Changed" />
+                            <TextBlock x:Name="AudioGainText" Width="44" VerticalAlignment="Center" Style="{StaticResource DxoMono}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <InfoBar x:Name="AudioRumbleInfo" IsOpen="False" IsClosable="False" Severity="Informational" Margin="0,4,0,0"
+                             Title="Not in this build"
+                             Message="Rumble from sound is an optional part of the engine. Rebuild with: scripts\build.ps1 -AudioHaptics" />
+                    <Border Style="{StaticResource DxoCard}" Margin="0,8,0,0">
                         <TextBlock Style="{StaticResource DxoCaption}" TextWrapping="Wrap"
-                                   Text="Turning game audio into DualSense voice-coil haptics (like PS5 games feel) is planned. Games with native DualSense support already do this over USB when DXO is in Native mode." />
+                                   Text="DualSense voice-coil haptics (the finer PS5 feel) are not built yet. Games with native DualSense support already do this over USB when DXO is in Native mode." />
                     </Border>
                 </StackPanel>
             </Grid>

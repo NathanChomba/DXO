@@ -19,6 +19,14 @@ thiserror.workspace = true
 log.workspace = true
 crc32fast.workspace = true
 
+# Sound capture for audio haptics. Optional so the normal build stays small
+# and offline-friendly; see src/haptics.rs.
+cpal = { version = "0.15", optional = true }
+
+[features]
+default = []
+audio-haptics = ["dep:cpal"]
+
 [target.'cfg(windows)'.dependencies]
 # unstable_xtarget_notification: lets us receive rumble games send to the virtual pad
 vigem-client = { version = "0.1", features = ["unstable_xtarget_notification", "unstable_ds4"] }
@@ -30,5 +38,6 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_IO",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

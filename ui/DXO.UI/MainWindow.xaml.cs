@@ -111,6 +111,14 @@ public sealed partial class MainWindow : Window
 
     public void SetTrayTip(string tip) => _tray?.SetTip(tip);
 
+    /// Games > "Game profiles": which profile each game switches to.
+    public void ShowGameProfiles() => NavigateFrame(typeof(GamesPage));
+    /// ...and back to the library.
+    public void ShowLibrary() => NavigateFrame(typeof(LibraryPage));
+
+    /// A Windows notification from the tray icon (works while the window is hidden).
+    public void ShowTrayMessage(string title, string text) => _tray?.ShowBalloon(title, text);
+
     /// Called by App once App.Device exists, so x:Bind sees a non-null source.
     public void Start()
     {
@@ -118,6 +126,7 @@ public sealed partial class MainWindow : Window
         Device.PropertyChanged += OnDeviceChanged;
         Device.PadsChanged += OnPadsChanged;
         Device.WindowToggleRequested += ToggleWindow;
+        Device.LowBattery += OnLowBattery;
         Nav.SelectedItem = Nav.MenuItems[0];
         VersionText.Text = $"v{App.Version}";
         Root.Loaded += OnFirstShown;
@@ -173,6 +182,15 @@ public sealed partial class MainWindow : Window
         else { App.Settings.UpdateDismissed = rel.Version; App.Settings.Save(); }
     }
 
+    /// A Windows notification (from the tray icon) before a controller dies mid-game.
+    private void OnLowBattery(string name, int percent, bool veryLow)
+    {
+        if (!App.Settings.LowBatteryWarning) return;
+        _tray?.ShowBalloon(
+            veryLow ? $"{name}: battery very low ({percent}%)" : $"{name}: battery low ({percent}%)",
+            veryLow ? "It will switch off soon. Plug it in to keep playing." : "Plug it in when you get a moment.");
+    }
+
     private void OnDeviceChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(DeviceViewModel.Connected) or nameof(DeviceViewModel.DeviceName) or nameof(DeviceViewModel.ProfileName))
@@ -205,7 +223,8 @@ public sealed partial class MainWindow : Window
     {
         if (ContentFrame.Content is ProfileEditorPage editor) { editor.ReloadInner(); return; }
         if (ContentFrame.CurrentSourcePageType is Type t && t != typeof(HomePage) && t != typeof(SettingsPage) &&
-            t != typeof(AboutPage) && t != typeof(GamesPage) && t != typeof(ProfilesPage))
+            t != typeof(AboutPage) && t != typeof(GamesPage) && t != typeof(ProfilesPage) &&
+            t != typeof(LibraryPage) && t != typeof(ChordsPage))
         {
             NavigateFrame(t);
             ContentFrame.BackStack.Clear();
@@ -559,9 +578,11 @@ public sealed partial class MainWindow : Window
     public void NavDirection(FocusNavigationDirection dir)
     {
         if (EnsureFocus()) return;
-        // A focused slider eats the along-axis direction to change its value;
-        // the cross-axis direction falls through and moves focus off it.
-        if (FocusManager.GetFocusedElement(Root.XamlRoot) is Slider s && AdjustSlider(s, dir)) return;
+        // A focused slider or number box eats the along-axis direction to change
+        // its value; the cross-axis direction falls through and moves focus off it.
+        var focused = FocusManager.GetFocusedElement(Root.XamlRoot);
+        if (focused is Slider s && AdjustSlider(s, dir)) return;
+        if (focused is DependencyObject d && FindParent<NumberBox>(d) is NumberBox nb && AdjustNumberBox(nb, dir)) return;
         FocusManager.TryMoveFocus(dir, new FindNextElementOptions { SearchRoot = Root });
     }
 
@@ -585,18 +606,131 @@ public sealed partial class MainWindow : Window
         return true;
     }
 
+    /// Left/Right on a number box (macro timings, the CemuHook port) steps its
+    /// value like a slider; holding the direction repeats. Up/Down move on.
+    private static bool AdjustNumberBox(NumberBox nb, FocusNavigationDirection dir)
+    {
+        if (dir is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right)) return false;
+        if (!nb.IsEnabled) return true;
+        double step = nb.SmallChange > 0 ? nb.SmallChange : 1;
+        double v = double.IsNaN(nb.Value) ? (double.IsInfinity(nb.Minimum) ? 0 : nb.Minimum) : nb.Value;
+        v += dir == FocusNavigationDirection.Right ? step : -step;
+        nb.Value = Math.Clamp(v, nb.Minimum, nb.Maximum);
+        return true;
+    }
+
+    private static T? FindParent<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d is not null and not T) d = VisualTreeHelper.GetParent(d);
+        return d as T;
+    }
+
+    private static bool IsInside(DependencyObject? d, DependencyObject ancestor)
+    {
+        while (d is not null && !ReferenceEquals(d, ancestor)) d = VisualTreeHelper.GetParent(d);
+        return d is not null;
+    }
+
+    /// Nothing highlighted yet: grab focus (where you last were on this page,
+    /// else the first control) so the player can see where they are.
     private bool EnsureFocus()
     {
         if (FocusManager.GetFocusedElement(Root.XamlRoot) is Control) return false;
-        var first = FocusManager.FindFirstFocusableElement(ContentFrame) ?? FocusManager.FindFirstFocusableElement(Root);
-        if (first is Control c) { c.Focus(FocusState.Keyboard); return true; }
+        if (FocusContent()) return true;
+        if (FocusManager.FindFirstFocusableElement(Root) is Control c) { c.Focus(FocusState.Keyboard); return true; }
         return false;
+    }
+
+    // ===== focus memory: each page remembers where you were =====
+
+    private readonly Dictionary<string, (string Name, int Index)> _focusMemory = new();
+
+    /// Page (and Profiles tab) on screen, as a key for the focus memory.
+    private string FocusKey() =>
+        (ContentFrame.CurrentSourcePageType?.Name ?? "") + (ContentFrame.Content is ProfileEditorPage ? ":" + ProfileEditorPage.LastTab : "");
+
+    /// Every control in the page that focus can land on, in visual-tree order.
+    private static void CollectFocusable(DependencyObject root, List<Control> into)
+    {
+        int n = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is UIElement { Visibility: Visibility.Collapsed }) continue;
+            if (child is Control c && c.IsTabStop && c.IsEnabled && c.ActualWidth > 0 && c is not (Page or Frame or ScrollViewer))
+                into.Add(c);
+            CollectFocusable(child, into);
+        }
+    }
+
+    /// Note where focus is on the page that's about to go away.
+    public void RememberFocus()
+    {
+        if (Root.XamlRoot is null) return;
+        if (FocusManager.GetFocusedElement(Root.XamlRoot) is not Control c || !IsInside(c, ContentFrame)) return;
+        var all = new List<Control>();
+        CollectFocusable(ContentFrame, all);
+        _focusMemory[FocusKey()] = (c.Name ?? "", all.IndexOf(c));
+    }
+
+    /// Put focus back where it was on this page, else on its first control.
+    private bool FocusContent()
+    {
+        var all = new List<Control>();
+        CollectFocusable(ContentFrame, all);
+        if (all.Count == 0) return false;
+        Control? target = null;
+        if (_focusMemory.TryGetValue(FocusKey(), out var m))
+        {
+            if (m.Name.Length > 0) target = all.FirstOrDefault(x => x.Name == m.Name);
+            if (target is null && m.Index >= 0 && m.Index < all.Count) target = all[m.Index];
+        }
+        return (target ?? all[0]).Focus(FocusState.Keyboard);
+    }
+
+    /// A page (or Profiles tab) just came on screen. If the player is driving
+    /// with the controller and focus was on the page that went away, land on
+    /// the new page instead of nowhere. Focus sitting in the menu is left alone.
+    public void RestoreFocusWhenLoaded(FrameworkElement page)
+    {
+        if (_nav?.UsingPad != true) return;
+        void go()
+        {
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (Root.XamlRoot is null || _nav is not { UsingPad: true }) return;
+                if (FocusManager.GetFocusedElement(Root.XamlRoot) is Control cur && cur.FocusState != FocusState.Unfocused) return;
+                FocusContent();
+            });
+        }
+        if (page.IsLoaded) { go(); return; }
+        RoutedEventHandler? once = null;
+        once = (_, _) => { page.Loaded -= once; go(); };
+        page.Loaded += once;
+    }
+
+    /// Is any control highlighted right now?
+    public bool NavHasFocus => Root.XamlRoot is not null && FocusManager.GetFocusedElement(Root.XamlRoot) is Control;
+
+    /// Show or hide the "press a direction to start" cue.
+    public void NavSetCue(bool show)
+    {
+        var v = show ? Visibility.Visible : Visibility.Collapsed;
+        if (NavCue.Visibility != v) NavCue.Visibility = v;
     }
 
     /// Cross / A: activate the focused control (button, toggle, list item, combo).
     public void NavActivate()
     {
         if (FocusManager.GetFocusedElement(Root.XamlRoot) is not FrameworkElement el) return;
+        // Cross on a game tile opens its details.
+        if (ContentFrame.Content is LibraryPage games && games.ActivateFocused(el)) return;
+        // Cross on a text box: bring up the on-screen keyboard to type into it.
+        if (el is TextBox or PasswordBox or RichEditBox)
+        {
+            if (App.Settings.OnScreenKeyboard) App.Engine?.SetOskOpen(true);
+            return;
+        }
         var peer = FrameworkElementAutomationPeer.FromElement(el) ?? FrameworkElementAutomationPeer.CreatePeerForElement(el);
         if (peer is null) return;
         if (peer.GetPattern(PatternInterface.Invoke) is IInvokeProvider inv) inv.Invoke();
@@ -612,6 +746,7 @@ public sealed partial class MainWindow : Window
     public void NavBack()
     {
         if (_cardOpen) { CloseCard(); return; }
+        if (ContentFrame.Content is LibraryPage games && games.CloseDetails()) return; // back out of a game's details
         if (Nav.SelectedItem is Control sc) sc.Focus(FocusState.Keyboard);
     }
 
@@ -626,7 +761,12 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = items[((i + step) % items.Count + items.Count) % items.Count];
     }
 
-    public void NavTogglePane() => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+    /// Options / Menu. The menu is locked to its icons-only strip, so the
+    /// button belongs to the page: on Games it opens the highlighted game's details.
+    public void NavTogglePane()
+    {
+        if (ContentFrame.Content is LibraryPage games) games.ToggleDetails();
+    }
 
     public void NavHome() => Select("home");
 
@@ -673,7 +813,9 @@ public sealed partial class MainWindow : Window
             case "profiles": Go(typeof(ProfileEditorPage)); break;
             case "virtual": Go(typeof(VirtualDevicePage)); break;
             case "diagnostics": Go(typeof(DiagnosticsPage)); break;
-            case "games": Go(typeof(GamesPage)); break;
+            case "games": Go(typeof(LibraryPage)); break;
+            case "chords": Go(typeof(ChordsPage)); break;
+            case "community": Go(typeof(CommunityPage)); break;
             case "about": Go(typeof(AboutPage)); break;
         }
     }
@@ -689,7 +831,9 @@ public sealed partial class MainWindow : Window
     /// transition can't be sped up, so it's switched off.
     private void NavigateFrame(Type page, object? parameter = null)
     {
+        RememberFocus();
         ContentFrame.Navigate(page, parameter, new SuppressNavigationTransitionInfo());
+        if (ContentFrame.Content is FrameworkElement shown) RestoreFocusWhenLoaded(shown);
         double k = App.Settings.TransitionAnimationScale;
         if (k <= 0 || ContentFrame.Content is not UIElement el) return;
 

@@ -42,6 +42,34 @@ public sealed class AppSettings
     public bool CheckUpdatesOnStart { get; set; } = true;
     /// "Later" on this version: don't ask again at start-up until a newer one.
     public string UpdateDismissed { get; set; } = "";
+    /// PS + Options shows DXO's on-screen keyboard, which types into the app in front.
+    public bool OnScreenKeyboard { get; set; } = true;
+    /// Size of the on-screen keyboard: 1 = half the screen's width.
+    public double KeyboardScale { get; set; } = 1.0;
+    /// PS + Options opens Windows 11's own gamepad keyboard instead of DXO's,
+    /// for a controller emulated as an Xbox pad. Experimental.
+    public bool UseWindowsKeyboard { get; set; }
+    /// The system chord table as the engine's JSON; "" = DXO's defaults.
+    public string ChordsJson { get; set; } = "";
+    /// The quick-menu items as the engine's JSON; "" = DXO's defaults.
+    public string QuickMenuJson { get; set; } = "";
+    /// Games page: look game details and artwork up online (Steam's store, and
+    /// SteamGridDB / RAWG when their keys are filled in). Only while adding a
+    /// game or filling in a missing backdrop.
+    public bool OnlineGameLookups { get; set; } = true;
+    /// The player's own SteamGridDB key ("" = not used). Never leaves this PC except to SteamGridDB.
+    public string SteamGridDbKey { get; set; } = "";
+    /// The player's own RAWG key ("" = not used).
+    public string RawgKey { get; set; } = "";
+    /// Warn (a Windows notification) when a controller's battery runs low.
+    public bool LowBatteryWarning { get; set; } = true;
+    /// Community profile hub: the https address of its index.json. "" = off;
+    /// new installs start on DXO's own hub
+    /// (DXO contacts it only while the Community page is open).
+    public string CommunityHub { get; set; } = OfficialHub;
+
+    /// DXO's own profile repository (github.com/NathanChomba/DXO-Profiles).
+    public const string OfficialHub = "https://raw.githubusercontent.com/NathanChomba/DXO-Profiles/main/index.json";
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DXO", "settings.json");
