@@ -57,6 +57,7 @@ cargo run -p dxo-cli -- run profiles    # M3+: virtual pad + HidHide
 - `VirtualPad` is a trait so a virtual-DualSense backend can replace ViGEm later without touching the engine.
 
 ## Safety
-If the app crashes while HidHide is cloaking your pad, games won't see the
-controller. Open the HidHide Configuration Client and untick the device.
-(A "Unhide all" button is on the M4 todo list.)
+DXO lists the controllers it hides in `%LOCALAPPDATA%\DXO\hidden.txt`. If it
+crashes or is killed while hiding one, the next start (or uninstalling DXO)
+unhides it. To get a controller back right away, use Settings > Unhide all,
+or untick the device in the HidHide Configuration Client.

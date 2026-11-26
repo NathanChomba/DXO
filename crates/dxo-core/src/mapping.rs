@@ -55,20 +55,20 @@ pub fn apply(p: &Profile, raw: &PadState) -> PadState {
     s.r2 = shape_trigger(raw.r2, p.trigger_deadzone);
 
     if !p.remap.is_empty() {
-        let pairs: Vec<(u32, u32)> = p
-            .remap
-            .iter()
-            .filter_map(|(f, t)| Some((button_from_name(f)?, button_from_name(t)?)))
-            .collect();
         // Pass 1: remove every remapped source. Pass 2: OR sources into
-        // targets. Two passes make swaps (A<->B) work.
+        // targets. Two passes make swaps (A<->B) work. No allocation: this
+        // runs on every input report.
         let mut out = Buttons(raw.buttons.0);
-        for &(f, _) in &pairs {
-            out.set(f, false);
+        for (f, t) in &p.remap {
+            if let (Some(f), Some(_)) = (button_from_name(f), button_from_name(t)) {
+                out.set(f, false);
+            }
         }
-        for &(f, t) in &pairs {
-            if raw.buttons.has(f) {
-                out.set(t, true);
+        for (f, t) in &p.remap {
+            if let (Some(f), Some(t)) = (button_from_name(f), button_from_name(t)) {
+                if raw.buttons.has(f) {
+                    out.set(t, true);
+                }
             }
         }
         s.buttons = out;
@@ -76,33 +76,57 @@ pub fn apply(p: &Profile, raw: &PadState) -> PadState {
     s
 }
 
+/// Every button name profiles may use, with its aliases.
+const BUTTON_NAMES: &[(&str, u32)] = &[
+    ("south", Buttons::SOUTH),
+    ("cross", Buttons::SOUTH),
+    ("a", Buttons::SOUTH),
+    ("east", Buttons::EAST),
+    ("circle", Buttons::EAST),
+    ("b", Buttons::EAST),
+    ("west", Buttons::WEST),
+    ("square", Buttons::WEST),
+    ("x", Buttons::WEST),
+    ("north", Buttons::NORTH),
+    ("triangle", Buttons::NORTH),
+    ("y", Buttons::NORTH),
+    ("l1", Buttons::L1),
+    ("lb", Buttons::L1),
+    ("r1", Buttons::R1),
+    ("rb", Buttons::R1),
+    ("l3", Buttons::L3),
+    ("ls", Buttons::L3),
+    ("r3", Buttons::R3),
+    ("rs", Buttons::R3),
+    ("select", Buttons::SELECT),
+    ("create", Buttons::SELECT),
+    ("share", Buttons::SELECT),
+    ("back", Buttons::SELECT),
+    ("start", Buttons::START),
+    ("options", Buttons::START),
+    ("home", Buttons::HOME),
+    ("ps", Buttons::HOME),
+    ("guide", Buttons::HOME),
+    ("touchpad", Buttons::TOUCHPAD),
+    ("l2", Buttons::L2_DIGITAL),
+    ("lt", Buttons::L2_DIGITAL),
+    ("r2", Buttons::R2_DIGITAL),
+    ("rt", Buttons::R2_DIGITAL),
+    ("mute", Buttons::MUTE),
+    ("up", Buttons::DPAD_UP),
+    ("down", Buttons::DPAD_DOWN),
+    ("left", Buttons::DPAD_LEFT),
+    ("right", Buttons::DPAD_RIGHT),
+    ("paddle_l", Buttons::PADDLE_L),
+    ("paddle_r", Buttons::PADDLE_R),
+    ("fn_l", Buttons::FN_L),
+    ("fn_r", Buttons::FN_R),
+];
+
+/// Button bit for a name (case-insensitive). Never allocates: the bindings
+/// runner calls it for every binding on every input report.
 pub fn button_from_name(name: &str) -> Option<u32> {
-    Some(match name.to_ascii_lowercase().as_str() {
-        "south" | "cross" | "a" => Buttons::SOUTH,
-        "east" | "circle" | "b" => Buttons::EAST,
-        "west" | "square" | "x" => Buttons::WEST,
-        "north" | "triangle" | "y" => Buttons::NORTH,
-        "l1" | "lb" => Buttons::L1,
-        "r1" | "rb" => Buttons::R1,
-        "l3" | "ls" => Buttons::L3,
-        "r3" | "rs" => Buttons::R3,
-        "select" | "create" | "share" | "back" => Buttons::SELECT,
-        "start" | "options" => Buttons::START,
-        "home" | "ps" | "guide" => Buttons::HOME,
-        "touchpad" => Buttons::TOUCHPAD,
-        "l2" | "lt" => Buttons::L2_DIGITAL,
-        "r2" | "rt" => Buttons::R2_DIGITAL,
-        "mute" => Buttons::MUTE,
-        "up" => Buttons::DPAD_UP,
-        "down" => Buttons::DPAD_DOWN,
-        "left" => Buttons::DPAD_LEFT,
-        "right" => Buttons::DPAD_RIGHT,
-        "paddle_l" => Buttons::PADDLE_L,
-        "paddle_r" => Buttons::PADDLE_R,
-        "fn_l" => Buttons::FN_L,
-        "fn_r" => Buttons::FN_R,
-        _ => return None,
-    })
+    BUTTON_NAMES.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|&(_, b)| b)
 }
 
 #[cfg(test)]
@@ -138,6 +162,15 @@ mod tests {
         assert_eq!(apply(&p, &raw).lx, 0.0);
         raw.lx = 0.2;
         assert!(apply(&p, &raw).lx > 0.15);
+    }
+
+    #[test]
+    fn button_names_ignore_case() {
+        assert_eq!(button_from_name("Cross"), Some(Buttons::SOUTH));
+        assert_eq!(button_from_name("PADDLE_L"), Some(Buttons::PADDLE_L));
+        assert_eq!(button_from_name("rt"), Some(Buttons::R2_DIGITAL));
+        assert_eq!(button_from_name("nope"), None);
+        assert_eq!(button_from_name(""), None);
     }
 
     #[test]

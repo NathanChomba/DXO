@@ -160,11 +160,15 @@ pub struct Layers<'a> {
     pub shift: &'a [Binding],
     pub chords: &'a [ChordBinding],
     pub timing: Timing,
+    /// Changes whenever the profile behind these layers may have changed.
+    /// With a key, an unchanged key skips comparing every binding each
+    /// frame; `None` = compare every frame (tests, simple callers).
+    pub key: Option<u64>,
 }
 
 impl<'a> Layers<'a> {
     pub fn base(b: &'a [Binding]) -> Self {
-        Self { base: b, shift_button: "", shift: &[], chords: &[], timing: Timing::default() }
+        Self { base: b, shift_button: "", shift: &[], chords: &[], timing: Timing::default(), key: None }
     }
 
     pub fn of(p: &'a crate::profile::Profile) -> Self {
@@ -179,7 +183,14 @@ impl<'a> Layers<'a> {
                 soft: p.trigger_soft_point.clamp(0.02, 0.8),
                 full: p.trigger_full_point.clamp(0.3, 1.0),
             },
+            key: None,
         }
+    }
+
+    /// The same layers, tagged with the profile's revision (see `key`).
+    pub fn keyed(mut self, key: u64) -> Self {
+        self.key = Some(key);
+        self
     }
 }
 
@@ -221,14 +232,13 @@ const STAGE_MASK: u32 = L2_SOFT | L2_FULL | R2_SOFT | R2_FULL;
 const STAGE_SLACK: f32 = 0.04;
 
 /// A binding's source: a real button, or a trigger stage.
+/// Never allocates: it runs for every binding on every input report.
 pub fn source_from_name(name: &str) -> Option<u32> {
-    Some(match name.to_ascii_lowercase().as_str() {
-        "l2_soft" => L2_SOFT,
-        "l2_full" => L2_FULL,
-        "r2_soft" => R2_SOFT,
-        "r2_full" => R2_FULL,
-        other => return button_from_name(other),
-    })
+    const STAGES: [(&str, u32); 4] = [("l2_soft", L2_SOFT), ("l2_full", L2_FULL), ("r2_soft", R2_SOFT), ("r2_full", R2_FULL)];
+    match STAGES.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)) {
+        Some(&(_, bit)) => Some(bit),
+        None => button_from_name(name),
+    }
 }
 
 /// The real trigger a stage belongs to (other sources are themselves).
@@ -338,7 +348,8 @@ pub struct Runner {
     prev_eff: u32,
     /// Trigger stages currently engaged.
     stages: u32,
-    latched: HashMap<(u8, String), bool>,
+    /// Toggle state per (layer, binding index).
+    latched: HashMap<(u8, usize), bool>,
     prev_active: HashMap<Slot, bool>,
     taps: HashMap<(u8, usize), TapState>,
     held: HashSet<Out>,
@@ -351,6 +362,12 @@ pub struct Runner {
     tap_until: Option<Instant>,
     /// Bindings the state above belongs to; a different set resets it.
     last: Option<(Vec<Binding>, String, Vec<Binding>, Vec<ChordBinding>, Timing)>,
+    /// `Layers::key` of the last frame.
+    last_key: Option<u64>,
+    /// Buffers reused every frame so the input path never allocates once warm.
+    scratch_list: Vec<(u8, usize)>,
+    scratch_idle: Vec<(u8, usize)>,
+    scratch_want: HashSet<Out>,
 }
 
 /// The pad state and outputs one frame is building up.
@@ -367,9 +384,15 @@ impl Runner {
     /// the keyboard/mouse events to send now.
     pub fn process(&mut self, layers: Layers, raw: &PadState, mapped: &mut PadState, now: Instant) -> Vec<InputEvent> {
         let mut carried = vec![];
-        let same = self.last.as_ref().is_some_and(|l| {
-            l.0 == layers.base && l.1 == layers.shift_button && l.2 == layers.shift && l.3 == layers.chords && l.4 == layers.timing
-        });
+        // Same key as last frame = same profile: skip comparing every binding.
+        // A new key (or none) compares once; an equal profile keeps its state.
+        let same = match layers.key {
+            Some(k) if self.last_key == Some(k) && self.last.is_some() => true,
+            _ => self.last.as_ref().is_some_and(|l| {
+                l.0 == layers.base && l.1 == layers.shift_button && l.2 == layers.shift && l.3 == layers.chords && l.4 == layers.timing
+            }),
+        };
+        self.last_key = layers.key;
         if !same {
             // Profile changed: let go of anything the old bindings held.
             carried = self.release_all();
@@ -382,7 +405,9 @@ impl Runner {
             ));
         }
         let t = now.duration_since(*self.started.get_or_insert(now)).as_secs_f32();
-        let mut f = Frame { orig: *mapped, mapped, want: HashSet::new(), events: carried, now };
+        let mut want = std::mem::take(&mut self.scratch_want);
+        want.clear();
+        let mut f = Frame { orig: *mapped, mapped, want, events: carried, now };
 
         // ---- trigger stages ---------------------------------------------------
         let tm = layers.timing;
@@ -431,25 +456,31 @@ impl Runner {
         }
 
         let shifted = |name: &str| shift_on && layers.shift.iter().any(|b| b.button == name);
-        let mut list: Vec<((u8, usize), &Binding)> = vec![];
-        let mut idle: Vec<(u8, usize)> = vec![]; // bindings not in play this frame
+        // (layer, index) of the bindings in play this frame, and of those that are not.
+        let mut list = std::mem::take(&mut self.scratch_list);
+        let mut idle = std::mem::take(&mut self.scratch_idle);
+        list.clear();
+        idle.clear();
+        let binding = |key: (u8, usize)| -> &Binding { if key.0 == 0 { &layers.base[key.1] } else { &layers.shift[key.1] } };
         for (i, b) in layers.base.iter().enumerate() {
             if shifted(&b.button) || shift_src.is_some() && source_from_name(&b.button) == shift_src {
                 idle.push((0, i));
             } else {
-                list.push(((0, i), b));
+                list.push((0, i));
             }
         }
         for (i, b) in layers.shift.iter().enumerate() {
             if shift_on && source_from_name(&b.button) != shift_src {
-                list.push(((1, i), b));
+                list.push((1, i));
             } else {
                 idle.push((1, i));
             }
         }
-        for key in idle {
+        for &key in &idle {
             for sub in 0..3 {
-                self.prev_active.insert((key.0, key.1, sub), false);
+                if let Some(v) = self.prev_active.get_mut(&(key.0, key.1, sub)) {
+                    *v = false;
+                }
             }
             self.taps.remove(&key);
         }
@@ -457,7 +488,7 @@ impl Runner {
         // A trigger with stage bindings is no longer an ordinary trigger: the
         // game only gets what those bindings give it.
         for (trigger, mask) in [(Buttons::L2_DIGITAL, L2_SOFT | L2_FULL), (Buttons::R2_DIGITAL, R2_SOFT | R2_FULL)] {
-            if list.iter().any(|(_, b)| source_from_name(&b.button).is_some_and(|s| s & mask != 0)) {
+            if list.iter().any(|&k| source_from_name(&binding(k).button).is_some_and(|s| s & mask != 0)) {
                 f.mapped.buttons.set(trigger, false);
                 set_analog(f.mapped, trigger, 0.0);
             }
@@ -468,13 +499,18 @@ impl Runner {
         // chord doesn't suddenly press the other half in the game.
         self.chord_claimed &= src_bits;
         for (i, c) in layers.chords.iter().enumerate() {
-            let bits: Vec<u32> = c.buttons.iter().filter_map(|n| source_from_name(n)).collect();
-            let valid = bits.len() >= 2 && bits.len() == c.buttons.len();
-            let down = valid && bits.iter().all(|b| src_bits & b != 0);
-            if down {
-                for b in &bits {
-                    self.chord_claimed |= b;
+            // Every name must be a known source, and there must be at least two.
+            let mut mask = 0u32;
+            let mut valid = c.buttons.len() >= 2;
+            for n in &c.buttons {
+                match source_from_name(n) {
+                    Some(b) => mask |= b,
+                    None => valid = false,
                 }
+            }
+            let down = valid && src_bits & mask == mask;
+            if down {
+                self.chord_claimed |= mask;
             }
             self.exec((2, i, 0), &c.action, down, 0, false, &mut f);
         }
@@ -490,7 +526,8 @@ impl Runner {
         let eff = src_bits & !claimed;
 
         // ---- bindings -------------------------------------------------------
-        for (key, b) in list {
+        for &key in &list {
+            let b = binding(key);
             let Some(src) = source_from_name(&b.button) else { continue };
             let pressed = eff & src != 0;
             let was = self.prev_eff & src != 0;
@@ -519,7 +556,7 @@ impl Runner {
 
             let mut active = pressed;
             if b.toggle {
-                let l = self.latched.entry((key.0, b.button.clone())).or_insert(false);
+                let l = self.latched.entry(key).or_insert(false);
                 if pressed && !was {
                     *l = !*l;
                 }
@@ -535,8 +572,10 @@ impl Runner {
         self.prev_raw = raw.buttons.0;
         self.prev_eff = eff;
         f.mapped.buttons.0 &= !STAGE_MASK;
+        self.scratch_list = list;
+        self.scratch_idle = idle;
 
-        let Frame { want, mut events, .. } = f;
+        let Frame { mut want, mut events, .. } = f;
         for o in self.held.difference(&want) {
             events.push(release(*o));
         }
@@ -546,7 +585,9 @@ impl Runner {
                 Out::Mouse(button) => InputEvent::Mouse { button, down: true },
             });
         }
-        self.held = want;
+        // `held` becomes this frame's set; last frame's set is kept as next frame's buffer.
+        std::mem::swap(&mut self.held, &mut want);
+        self.scratch_want = want;
         events
     }
 
@@ -569,7 +610,7 @@ impl Runner {
             }
             Action::Button { to } => {
                 if active {
-                    press(&Press::Button { to: to.clone() }, rising, f);
+                    press_button(to, f);
                 }
             }
             Action::Key { vk } => {
@@ -648,12 +689,7 @@ impl Runner {
 /// Hold one press this frame. Wheel turns only fire on `rising`.
 fn press(p: &Press, rising: bool, f: &mut Frame) {
     match p {
-        Press::Button { to } => {
-            if let Some(dst) = button_from_name(to) {
-                f.mapped.buttons.set(dst, true);
-                set_analog(f.mapped, dst, 1.0);
-            }
-        }
+        Press::Button { to } => press_button(to, f),
         Press::Key { vk } => {
             if *vk != 0 {
                 f.want.insert(Out::Key(*vk));
@@ -672,6 +708,14 @@ fn press(p: &Press, rising: bool, f: &mut Frame) {
         Press::Mouse { button } => {
             f.want.insert(Out::Mouse(*button));
         }
+    }
+}
+
+/// Hold a pad button this frame (a trigger counts as fully pulled).
+fn press_button(to: &str, f: &mut Frame) {
+    if let Some(dst) = button_from_name(to) {
+        f.mapped.buttons.set(dst, true);
+        set_analog(f.mapped, dst, 1.0);
     }
 }
 
@@ -837,6 +881,35 @@ mod tests {
         assert!(ev.is_empty(), "held key is not re-sent");
         let (_, ev) = run(&mut r, &b, &pad(&[]), t);
         assert_eq!(ev, vec![InputEvent::Key { vk: 0x20, down: false }]);
+    }
+
+    #[test]
+    fn keyed_layers_keep_state_until_the_bindings_change() {
+        let toggle = vec![Binding { button: "l1".into(), toggle: true, ..Default::default() }];
+        let key = vec![Binding { button: "l1".into(), action: Action::Key { vk: 0x20 }, ..Default::default() }];
+        let mut r = Runner::default();
+        let t = Instant::now();
+        let go = |r: &mut Runner, b: &[Binding], k: u64, raw: &PadState| {
+            let mut m = *raw;
+            let ev = r.process(Layers::base(b).keyed(k), raw, &mut m, t);
+            (m, ev)
+        };
+        go(&mut r, &toggle, 1, &pad(&[Buttons::L1]));
+        assert!(go(&mut r, &toggle, 1, &pad(&[])).0.buttons.has(Buttons::L1), "latched");
+        // a new key with the same bindings (e.g. a slider moved) keeps the latch
+        assert!(go(&mut r, &toggle, 2, &pad(&[])).0.buttons.has(Buttons::L1));
+        // different bindings: state resets, held keys are let go
+        let (_, ev) = go(&mut r, &key, 3, &pad(&[Buttons::L1]));
+        assert_eq!(ev, vec![InputEvent::Key { vk: 0x20, down: true }]);
+        let (_, ev) = go(&mut r, &toggle, 4, &pad(&[]));
+        assert_eq!(ev, vec![InputEvent::Key { vk: 0x20, down: false }], "old key released on the switch");
+    }
+
+    #[test]
+    fn source_names_ignore_case() {
+        assert_eq!(source_from_name("R2_Full"), Some(R2_FULL));
+        assert_eq!(source_from_name("Cross"), Some(Buttons::SOUTH));
+        assert_eq!(source_from_name("l2_half"), None);
     }
 
     #[test]

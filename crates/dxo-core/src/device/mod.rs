@@ -98,6 +98,10 @@ pub fn enumerate(api: &HidApi, include_generic: bool) -> Vec<Found> {
 pub struct Device {
     pub info: Found,
     pub hid: HidDevice,
+    /// A second handle to the same controller, for output reports (lightbar,
+    /// rumble, triggers) written from their own thread, so a slow Bluetooth
+    /// write never holds up reading input. None if it couldn't be opened.
+    out: Option<HidDevice>,
     parser: Parser,
     buf: Vec<u8>,
     last_len: usize,
@@ -149,7 +153,14 @@ impl Device {
         };
         // Windows reads BT HID reports at the descriptor's maximum input
         // length (547 bytes for a DS4 over BT), so leave plenty of room.
-        Ok(Device { info, hid, parser, buf: vec![0u8; 1024], last_len: 0, seq: 0 })
+        let out = match api.open_path(&info.path) {
+            Ok(h) => Some(h),
+            Err(e) => {
+                log::warn!("second handle for output failed ({e}); output will share the input thread");
+                None
+            }
+        };
+        Ok(Device { info, hid, out, parser, buf: vec![0u8; 1024], last_len: 0, seq: 0 })
     }
 
     /// Block up to `timeout_ms` for one input report. `Ok(None)` on timeout.
@@ -222,6 +233,11 @@ impl Device {
     /// Bytes of the most recent input report (Diagnostics page).
     pub fn last_report(&self) -> &[u8] {
         &self.buf[..self.last_len]
+    }
+
+    /// Hand over the output handle (once) so another thread can write to it.
+    pub fn take_output_handle(&mut self) -> Option<HidDevice> {
+        self.out.take()
     }
 
     pub fn write(&self, report: &[u8]) -> Result<()> {

@@ -105,6 +105,70 @@ impl HidHide {
     }
 }
 
+/// Which controllers DXO has hidden right now, kept on disk
+/// (`%LOCALAPPDATA%\\DXO\\hidden.txt`, one instance id per line).
+///
+/// DXO unhides a controller when it lets go of it. If DXO crashes or is
+/// killed first, the controller would stay invisible to every game. So the
+/// list is written as controllers are hidden, and the next start (or the
+/// uninstaller) unhides whatever is still on it.
+#[derive(Debug, Default)]
+pub struct HiddenLog {
+    path: Option<PathBuf>,
+    ids: std::sync::Mutex<std::collections::BTreeSet<String>>,
+}
+
+impl HiddenLog {
+    /// The log in DXO's data folder (None where there is no LOCALAPPDATA).
+    pub fn in_app_data() -> HiddenLog {
+        let path = std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("DXO").join("hidden.txt"));
+        HiddenLog::at(path)
+    }
+
+    pub fn at(path: Option<PathBuf>) -> HiddenLog {
+        HiddenLog { path, ids: Default::default() }
+    }
+
+    /// Ids left by a run that didn't shut down cleanly. Clears the list.
+    pub fn take_leftovers(&self) -> Vec<String> {
+        let Some(p) = &self.path else { return vec![] };
+        let text = std::fs::read_to_string(p).unwrap_or_default();
+        let ids: Vec<String> = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect();
+        self.ids.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.save(&Default::default());
+        ids
+    }
+
+    pub fn add(&self, id: &str) {
+        let mut ids = self.ids.lock().unwrap_or_else(|e| e.into_inner());
+        if ids.insert(id.to_string()) {
+            self.save(&ids);
+        }
+    }
+
+    pub fn remove(&self, id: &str) {
+        let mut ids = self.ids.lock().unwrap_or_else(|e| e.into_inner());
+        if ids.remove(id) {
+            self.save(&ids);
+        }
+    }
+
+    /// Write to a temporary file, then rename: a crash mid-write never leaves
+    /// a half-written list.
+    fn save(&self, ids: &std::collections::BTreeSet<String>) {
+        let Some(p) = &self.path else { return };
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let text: String = ids.iter().map(|id| format!("{id}\n")).collect();
+        let tmp = p.with_extension("tmp");
+        let ok = std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, p));
+        if let Err(e) = ok {
+            log::warn!("{}: {e}", p.display());
+        }
+    }
+}
+
 /// Convert a Windows hidapi path to a device instance id (best effort).
 pub fn instance_id_from_path(path: &str) -> Option<String> {
     let s = path.strip_prefix(r"\\?\")?;
@@ -126,5 +190,24 @@ mod tests {
             instance_id_from_path(p).unwrap(),
             r"HID\VID_054C&PID_0CE6&MI_03\7&1A2B3C&0&0000"
         );
+    }
+
+    #[test]
+    fn hidden_log_survives_a_crash() {
+        let dir = std::env::temp_dir().join(format!("dxo-hidden-{}", std::process::id()));
+        let path = dir.join("hidden.txt");
+        let _ = std::fs::remove_dir_all(&dir);
+        {
+            let log = HiddenLog::at(Some(path.clone()));
+            log.add(r"HID\VID_054C&PID_0CE6\1");
+            log.add(r"HID\VID_054C&PID_05C4\2");
+            log.remove(r"HID\VID_054C&PID_0CE6\1"); // let go of cleanly
+            // ...then the process "crashes": nothing else runs
+        }
+        let next = HiddenLog::at(Some(path.clone()));
+        assert_eq!(next.take_leftovers(), vec![r"HID\VID_054C&PID_05C4\2".to_string()]);
+        assert!(next.take_leftovers().is_empty(), "cleared once read");
+        assert!(HiddenLog::at(None).take_leftovers().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

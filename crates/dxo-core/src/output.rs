@@ -256,6 +256,65 @@ pub fn bt_crc(report: &[u8]) -> u32 {
     h.finalize()
 }
 
+/// Writes output reports on its own thread. Only the newest report matters:
+/// if a write is slow (Bluetooth), reports that pile up in the meantime are
+/// replaced, never queued, so the controller always gets the latest state.
+pub struct Writer {
+    shared: std::sync::Arc<WriterShared>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+struct WriterShared {
+    /// (latest report not yet written, stop requested)
+    slot: std::sync::Mutex<(Option<Vec<u8>>, bool)>,
+    wake: std::sync::Condvar,
+}
+
+impl Writer {
+    /// Start the thread. `write` sends one report; it may block.
+    pub fn spawn(name: String, mut write: impl FnMut(&[u8]) + Send + 'static) -> std::io::Result<Writer> {
+        let shared = std::sync::Arc::new(WriterShared { slot: std::sync::Mutex::new((None, false)), wake: std::sync::Condvar::new() });
+        let s2 = shared.clone();
+        let thread = std::thread::Builder::new().name(name).spawn(move || loop {
+            let report = {
+                let mut g = s2.slot.lock().unwrap_or_else(|e| e.into_inner());
+                loop {
+                    if let Some(r) = g.0.take() {
+                        break r;
+                    }
+                    if g.1 {
+                        return;
+                    }
+                    g = s2.wake.wait(g).unwrap_or_else(|e| e.into_inner());
+                }
+            };
+            // A panic in the write must not leave the worker waiting on a dead thread.
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| write(&report))).is_err() {
+                log::warn!("output writer: a write panicked; output stopped for this controller");
+                return;
+            }
+        })?;
+        Ok(Writer { shared, thread: Some(thread) })
+    }
+
+    /// Queue a report, replacing any not yet written. Never blocks on the device.
+    pub fn send(&self, report: Vec<u8>) {
+        self.shared.slot.lock().unwrap_or_else(|e| e.into_inner()).0 = Some(report);
+        self.shared.wake.notify_one();
+    }
+}
+
+impl Drop for Writer {
+    /// Writes whatever is still waiting, then stops the thread.
+    fn drop(&mut self) {
+        self.shared.slot.lock().unwrap_or_else(|e| e.into_inner()).1 = true;
+        self.shared.wake.notify_one();
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,5 +392,28 @@ mod tests {
         assert_eq!(r.len(), 78);
         let crc = u32::from_le_bytes(r[74..78].try_into().unwrap());
         assert_eq!(crc, bt_crc(&r[..74]));
+    }
+
+    #[test]
+    fn writer_sends_the_latest_report_off_thread() {
+        use std::sync::{Arc, Mutex};
+        let got = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+        let gate = Arc::new(Mutex::new(()));
+        let hold = gate.lock().unwrap(); // the first write blocks, like a slow Bluetooth write
+        let (g2, gate2) = (got.clone(), gate.clone());
+        let w = Writer::spawn("test-out".into(), move |r| {
+            let _wait = gate2.lock().unwrap();
+            g2.lock().unwrap().push(r.to_vec());
+        })
+        .unwrap();
+        w.send(vec![1]);
+        std::thread::sleep(std::time::Duration::from_millis(50)); // writer is now stuck on report 1
+        let t = std::time::Instant::now();
+        w.send(vec![2]);
+        w.send(vec![3]);
+        assert!(t.elapsed() < std::time::Duration::from_millis(20), "send never waits for the device");
+        drop(hold);
+        drop(w); // flushes and joins
+        assert_eq!(*got.lock().unwrap(), vec![vec![1], vec![3]], "report 2 was replaced, never queued");
     }
 }

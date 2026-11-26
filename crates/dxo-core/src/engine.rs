@@ -112,7 +112,7 @@ impl Diag {
 pub struct PadSummary {
     pub slot: usize,
     pub snapshot: Snapshot,
-    pub profile: Profile,
+    pub profile: Arc<Profile>,
     pub selected: bool,
     /// This controller's saved settings (name, default profile, emulation, game rules).
     pub controller: Option<ControllerSettings>,
@@ -124,7 +124,9 @@ struct Pad {
     snapshot: Mutex<Snapshot>,
     /// UI-requested overrides layered on top of the profile (lightbar, triggers)
     output_override: Mutex<Option<OutputState>>,
-    profile: Mutex<Profile>,
+    /// Shared, not copied: the worker takes a cheap `Arc` clone per report.
+    /// Writers replace it (or `Arc::make_mut` it), never edit it in place.
+    profile: Mutex<Arc<Profile>>,
     /// UI asked for a fresh connect (e.g. "Fix double input").
     reconnect: AtomicBool,
     /// UI asked for a manual gyro calibration.
@@ -145,7 +147,7 @@ impl Pad {
             slot,
             snapshot: Mutex::new(Snapshot::default()),
             output_override: Mutex::new(None),
-            profile: Mutex::new(Profile::default()),
+            profile: Mutex::new(Arc::new(Profile::default())),
             reconnect: AtomicBool::new(false),
             calibrate_gyro: AtomicBool::new(false),
             diag: Mutex::new(Diag::default()),
@@ -220,6 +222,8 @@ struct Shared {
     /// it changes, so each worker reloads it.
     chord_map: Mutex<Vec<SysBinding>>,
     chord_rev: AtomicU32,
+    /// Controllers hidden right now, on disk, so a crash can be undone at the next start.
+    hidden_log: hidhide::HiddenLog,
 }
 
 /// `Shared::osk_owner` while the keyboard is closed.
@@ -279,9 +283,10 @@ impl Shared {
         let mut cur = pad.profile.lock().unwrap();
         if cur.name != p.name {
             log::info!("player {}: profile {} ({})", pad.slot + 1, p.name, fg.as_deref().unwrap_or("desktop"));
-            *cur = p;
-        } else {
+            *cur = Arc::new(p);
+        } else if cur.target != c.target || cur.hide_physical != c.hide_physical {
             // same profile: still make sure emulation/hiding follow the controller
+            let cur = Arc::make_mut(&mut cur);
             cur.target = c.target;
             cur.hide_physical = c.hide_physical;
         }
@@ -345,6 +350,7 @@ impl Engine {
             radial_owner: AtomicUsize::new(OSK_CLOSED),
             chord_map: Mutex::new(chords::default_map()),
             chord_rev: AtomicU32::new(0),
+            hidden_log: hidhide::HiddenLog::in_app_data(),
         });
         let s2 = shared.clone();
         let thread = std::thread::Builder::new()
@@ -391,11 +397,11 @@ impl Engine {
                 }
             }
         }
-        *pad.profile.lock().unwrap() = p;
+        *pad.profile.lock().unwrap() = Arc::new(p);
     }
 
     pub fn profile(&self) -> Profile {
-        self.shared.current().profile.lock().unwrap().clone()
+        Profile::clone(&self.shared.current().profile.lock().unwrap())
     }
 
     /// Change how games see the selected pad. Takes effect immediately: if the
@@ -411,7 +417,8 @@ impl Engine {
                 store.set(c);
             }
         }
-        let mut p = pad.profile.lock().unwrap();
+        let mut guard = pad.profile.lock().unwrap();
+        let p = Arc::make_mut(&mut guard);
         p.target = target;
         p.hide_physical = hide_physical;
         p.rumble_passthrough = rumble_passthrough;
@@ -746,6 +753,14 @@ fn manage(sh: Arc<Shared>, cfg: EngineConfig) {
                     Ok(()) => log::info!("HidHide: DXO whitelisted"),
                     Err(e) => log::warn!("HidHide whitelist failed: {e}"),
                 }
+                // A previous run that crashed or was killed may have left
+                // controllers hidden from every game: give them back first.
+                for id in sh.hidden_log.take_leftovers() {
+                    match h.unhide(&id) {
+                        Ok(()) => log::info!("HidHide: unhid {id}, left hidden by a previous run"),
+                        Err(e) => log::warn!("HidHide: could not unhide leftover {id}: {e}"),
+                    }
+                }
                 Some(Arc::new(h))
             }
             Err(e) => {
@@ -883,7 +898,7 @@ fn manage(sh: Arc<Shared>, cfg: EngineConfig) {
             sh.controllers.lock().unwrap().get_or_create(&id, &dev.info.product);
             log::info!("controller {id} ({}) -> player {}", dev.info.product, slot + 1);
             *pad.controller_id.lock().unwrap() = Some(id);
-            pad.profile.lock().unwrap().name.clear(); // force apply_rules to set it
+            Arc::make_mut(&mut pad.profile.lock().unwrap()).name.clear(); // force apply_rules to set it
             sh.apply_rules(&pad);
             *pad.path.lock().unwrap() = Some(path);
             *pad.gone_at.lock().unwrap() = None;
@@ -1029,12 +1044,32 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     let mut last_report_at: Option<Instant> = None;
     let mut rate_count = 0u32;
     let mut rate_t = Instant::now();
+    // Output reports go out on their own thread so a slow write (Bluetooth)
+    // never delays reading input. Falls back to writing here if the second
+    // handle couldn't be opened.
+    let writer = conn.dev.take_output_handle().and_then(|h| {
+        output::Writer::spawn(format!("dxo-out-{}", pad.slot + 1), move |r| {
+            let _ = h.write(r);
+        })
+        .map_err(|e| log::warn!("output thread: {e}; writing from the input thread"))
+        .ok()
+    });
+    // The profile the bindings runner last saw, and a number that goes up when
+    // it is swapped: the runner then compares bindings once, not every report.
+    // Holding the Arc keeps its address from being reused by a new profile.
+    let mut seen_profile: Option<Arc<Profile>> = None;
+    let mut profile_gen = 0u64;
 
     let reason: String = loop {
         if !sh.running.load(Ordering::Acquire) {
             break "DXO is closing".into();
         }
-        let profile = pad.profile.lock().unwrap().clone();
+        // An Arc clone: no allocation on the input path.
+        let profile = Arc::clone(&pad.profile.lock().unwrap());
+        if !seen_profile.as_ref().is_some_and(|p| Arc::ptr_eq(p, &profile)) {
+            profile_gen += 1;
+            seen_profile = Some(Arc::clone(&profile));
+        }
         if ctl_read_at.elapsed() >= Duration::from_secs(1) {
             ctl = read_ctl();
             ctl_read_at = Instant::now();
@@ -1169,7 +1204,7 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
                     }
                 }
                 if !captured {
-                    bindings::send(&runner.process(Layers::of(&profile), &raw, &mut mapped, now));
+                    bindings::send(&runner.process(Layers::of(&profile).keyed(profile_gen), &raw, &mut mapped, now));
                     for req in runner.take_launches() {
                         bindings::launch(&req);
                     }
@@ -1297,7 +1332,9 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
                     };
                     snap.raw = raw;
                     snap.mapped = mapped;
-                    snap.profile_name = profile.name.clone();
+                    if snap.profile_name != profile.name {
+                        snap.profile_name.clone_from(&profile.name); // only on a change: no per-report allocation
+                    }
                     if rate_t.elapsed() >= Duration::from_secs(1) {
                         snap.reports_per_sec = rate_count;
                         rate_count = 0;
@@ -1358,7 +1395,12 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
             bt_seq = (bt_seq + 1) & 0x0F;
             let rep = output::build_report(conn.dev.info.kind, conn.dev.info.transport, &out, bt_seq);
             if !rep.is_empty() {
-                let _ = conn.dev.write(&rep);
+                match &writer {
+                    Some(w) => w.send(rep),
+                    None => {
+                        let _ = conn.dev.write(&rep);
+                    }
+                }
             }
             last_output = Some(out);
             last_output_sent = Instant::now();
@@ -1374,8 +1416,12 @@ fn run_pad(sh: &Shared, pad: &Pad, dev: Device, hh: Option<Arc<HidHide>>) {
     }
     bindings::send(&runner.release_all()); // never leave a key held down
     bindings::send(&pointer.release());
+    drop(writer); // finish the last output report, close the output handle
     if let (Some(h), Some(id)) = (hh.as_deref(), conn.hidden_instance.as_deref()) {
-        let _ = h.unhide(id);
+        match h.unhide(id) {
+            Ok(()) => sh.hidden_log.remove(id),
+            Err(e) => log::warn!("HidHide: unhide {id} failed: {e}"), // stays in the log: next start retries
+        }
     }
     drop(conn); // closes the HID handle, unplugs the virtual pad
     let mut snap = pad.snapshot.lock().unwrap();
@@ -1484,6 +1530,7 @@ fn connect(sh: &Shared, pad: &Pad, dev: Device, hh: Option<&HidHide>) -> Result<
             (Some(h), Some(id)) => match h.hide(&id) {
                 Ok(()) => {
                     log::info!("HidHide: hid {id}");
+                    sh.hidden_log.add(&id);
                     hidden_instance = Some(id);
                 }
                 Err(e) => log::warn!("HidHide hide failed: {e}"),
@@ -1521,7 +1568,10 @@ fn connect(sh: &Shared, pad: &Pad, dev: Device, hh: Option<&HidHide>) -> Result<
             Ok(v) => v,
             Err(e) => {
                 if let (Some(h), Some(id)) = (hh, hidden_instance.as_deref()) {
-                    let _ = h.unhide(id); // don't leave the real pad hidden with nothing in its place
+                    // don't leave the real pad hidden with nothing in its place
+                    if h.unhide(id).is_ok() {
+                        sh.hidden_log.remove(id);
+                    }
                 }
                 return Err(e);
             }
@@ -1570,6 +1620,7 @@ mod tests {
             radial_owner: AtomicUsize::new(OSK_CLOSED),
             chord_map: Mutex::new(chords::default_map()),
             chord_rev: AtomicU32::new(0),
+            hidden_log: hidhide::HiddenLog::at(None),
         }
     }
 

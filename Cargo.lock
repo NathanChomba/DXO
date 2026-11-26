@@ -332,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "dxo-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ctrlc",
  "dxo-core",
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "dxo-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "cpal",
  "crc32fast",
