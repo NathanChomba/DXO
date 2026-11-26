@@ -24,9 +24,12 @@ public sealed class LibraryItem : INotifyPropertyChanged
 {
     public LibraryGame Game { get; }
     public string Name => Game.Name;
-    public string Initials { get; }
-    public ImageSource? Cover { get; }
+    public string Initials { get; private set; }
+    public ImageSource? Cover { get; private set; }
     public Visibility StarVisibility => Game.Favourite ? Visibility.Visible : Visibility.Collapsed;
+    /// Tile size from Settings (box-art shape, 2:3).
+    public double TileWidth => LibraryPage.TileWidth;
+    public double TileHeight => LibraryPage.TileHeight;
 
     private bool _highlighted;
     /// The highlighted tile shows its name.
@@ -51,6 +54,15 @@ public sealed class LibraryItem : INotifyPropertyChanged
         // With a cover there is nothing to show behind it; without one, the game's initials.
         Initials = Cover is null ? LibraryPage.InitialsOf(game.Name) : "";
     }
+
+    /// The game got a new cover (or name): redraw just this tile.
+    public void Refresh()
+    {
+        Cover = LibraryPage.LoadPicture(Game.Artwork, 300);
+        Initials = Cover is null ? LibraryPage.InitialsOf(Game.Name) : "";
+        foreach (string p in new[] { nameof(Cover), nameof(Initials), nameof(Name), nameof(StarVisibility) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
+    }
 }
 
 /// Milestone 7.1: the Games page, console style.
@@ -70,12 +82,19 @@ public sealed partial class LibraryPage : Page
     /// How much larger the highlighted tile is drawn.
     private const double Zoom = 1.14;
     private const int SlideMs = 180, FadeMs = 420;
+    /// Tile size: Settings > Games page > Tile size scales the normal 140 x 210.
+    public static double TileScale => Math.Clamp(App.Settings.GameTileScale, 0.75, 1.5);
+    public static double TileWidth => Math.Round(140 * TileScale);
+    public static double TileHeight => Math.Round(210 * TileScale);
+    /// How long each backdrop stays in a slideshow.
+    private static readonly TimeSpan SlideshowStep = TimeSpan.FromSeconds(12);
 
     private List<LibraryGame> _games = new();
     private LibraryGame? _selected;
     private string _query = "", _filter = AllGames;
     private bool _loading, _started, _filling, _fromHover;
-    private Image _front;
+    private Border _front;
+    private string _gifShown = "";
     private string _backdropShown = "\0";
     /// The trailer panel's own player, kept only so its failure handler is hooked once.
     private MediaPlayer? _player;
@@ -83,13 +102,36 @@ public sealed partial class LibraryPage : Page
     private string _status = "";
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _statusTimer;
     private ScrollViewer? _rowScroller;
+    /// Where the mouse was the last time hovering picked a tile. A tile that
+    /// slides under a mouse that hasn't moved (the row scrolling) is not a hover:
+    /// treating it as one made the row chase the mouse and shake side to side.
+    private Windows.Foundation.Point? _hoverAt;
+    private Windows.Foundation.Point? _lastPointer;
+    private MediaPlayer? _bgPlayer;
+    private string _bgVideo = "";
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _videoDelay, _slideshow;
+    private int _slideIndex;
     private readonly CancellationTokenSource _leaving = new();
 
     public LibraryPage()
     {
         InitializeComponent();
         _front = BackdropA;
+        // The row is as tall as the tiles plus room for the highlighted one to grow.
+        GameGrid.Height = TileHeight * Zoom + 32;
+        if (App.Settings.LivingBackdrop) StartLivingBackdrop();
+        _videoDelay = DispatcherQueue.CreateTimer();
+        _videoDelay.Interval = TimeSpan.FromMilliseconds(450); // don't start a video for every tile passed over
+        _videoDelay.IsRepeating = false;
+        _videoDelay.Tick += (_, _) => StartBackdropVideo();
+        _slideshow = DispatcherQueue.CreateTimer();
+        _slideshow.Interval = SlideshowStep;
+        _slideshow.Tick += (_, _) => NextSlide();
+        if (App.Settings.BackdropMode == "Slideshow") _slideshow.Start();
         Loaded += OnLoaded;
+        LibraryView.SizeChanged += (_, e) => SizeBackdrop(e.NewSize);
+        // Track the mouse across the whole page, including over the details screen.
+        AddHandler(PointerMovedEvent, new PointerEventHandler((_, e) => _lastPointer = e.GetCurrentPoint(null).Position), handledEventsToo: true);
         // Keep the name under its tile while the row slides or the window is resized.
         InfoLayer.SizeChanged += (_, _) => PlaceInfo();
         GameGrid.Loaded += (_, _) =>
@@ -101,6 +143,9 @@ public sealed partial class LibraryPage : Page
         {
             _leaving.Cancel(); // stop looking things up when the page goes away
             StopTrailer();
+            _slideshow?.Stop();
+            _videoDelay?.Stop();
+            StopBackdropVideo();
         };
 
         // Moving the highlight with the pad or the arrow keys picks the game, so the
@@ -118,8 +163,12 @@ public sealed partial class LibraryPage : Page
             SetZoom(c, ReferenceEquals((a.Item as LibraryItem)?.Game, _selected), animate: false);
             if (c.Tag as string == "hooked") return; // containers are reused: hook each once
             c.Tag = "hooked";
-            c.PointerEntered += (_, _) =>
+            c.PointerEntered += (_, e) =>
             {
+                if (DetailsView.Visibility == Visibility.Visible) return;
+                var at = e.GetCurrentPoint(null).Position;
+                if (_hoverAt is { } was && Math.Abs(at.X - was.X) < 3 && Math.Abs(at.Y - was.Y) < 3) return; // mouse didn't move
+                _hoverAt = at;
                 if (GameGrid.ItemFromContainer(c) is not LibraryItem it || ReferenceEquals(GameGrid.SelectedItem, it)) return;
                 _fromHover = true; // the tile is already under the mouse: don't slide the row
                 GameGrid.SelectedItem = it;
@@ -181,6 +230,140 @@ public sealed partial class LibraryPage : Page
         sb.Begin();
     }
 
+    // ================= backdrop: living, animated, several =================
+
+    /// The slow zoom and drift that makes the artwork feel alive: zoom in a
+    /// little while sliding sideways, then back, over about half a minute.
+    private void StartLivingBackdrop()
+    {
+        var sb = new Storyboard { RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true };
+        void Add(string property, double from, double to)
+        {
+            var a = new DoubleAnimation
+            {
+                From = from,
+                To = to,
+                Duration = TimeSpan.FromSeconds(26),
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            };
+            Storyboard.SetTarget(a, BackdropMotion);
+            Storyboard.SetTargetProperty(a, property);
+            sb.Children.Add(a);
+        }
+        Add("ScaleX", 1.02, 1.10);
+        Add("ScaleY", 1.02, 1.10);
+        Add("TranslateX", -24, 24);
+        Add("TranslateY", 8, -8);
+        sb.Begin();
+    }
+
+    /// Show the highlighted game's backdrop: its animated background if it has
+    /// one (and Settings allows), else one of its pictures (the chosen one, or
+    /// the next in the slideshow), else its cover enlarged and dimmed.
+    private void ShowGameBackdrop(bool resetSlideshow)
+    {
+        if (resetSlideshow)
+        {
+            _slideIndex = 0;
+            _slideshow?.Stop();
+            if (App.Settings.BackdropMode == "Slideshow") _slideshow?.Start(); // a full step on each new game
+        }
+        _videoDelay?.Stop();
+        var g = _selected;
+        string anim = g is not null && App.Settings.AnimatedBackdrops && g.AnimatedBackground.Length > 0 && File.Exists(g.AnimatedBackground)
+            ? g.AnimatedBackground : "";
+        if (anim.Length == 0 || !GameLibrary.IsVideo(anim)) StopBackdropVideo();
+        ShowGif(anim.Length > 0 && !GameLibrary.IsVideo(anim) ? anim : "");
+
+        if (g is null) { ShowBackdrop("", 0); return; }
+        if (anim.Length > 0 && !GameLibrary.IsVideo(anim)) return; // the GIF is showing, over the picture
+
+        var pictures = GameLibrary.AllBackdrops(g);
+        if (pictures.Count > 0)
+        {
+            string pick = App.Settings.BackdropMode == "Slideshow" ? pictures[_slideIndex % pictures.Count] : pictures[0];
+            ShowBackdrop(pick, 0.9);
+        }
+        else if (g.Artwork.Length > 0 && File.Exists(g.Artwork)) ShowBackdrop(g.Artwork, 0.35); // the cover, enlarged and dimmed
+        else ShowBackdrop("", 0);
+
+        // A video starts once the highlight has settled, over the still picture.
+        if (anim.Length > 0 && anim != _bgVideo) _videoDelay?.Start();
+    }
+
+    /// Show a GIF over the backdrop pictures, or hide it ("").
+    private void ShowGif(string path)
+    {
+        if (path == _gifShown) return;
+        _gifShown = path;
+        if (path.Length == 0)
+        {
+            Animate(BackdropGif, "Opacity", 0, FadeMs);
+            BackdropGif.Source = null;
+            return;
+        }
+        BackdropGif.Source = LoadPicture(path); // full size: a GIF won't animate if decoded smaller
+        Animate(BackdropGif, "Opacity", 0.9, FadeMs);
+    }
+
+    /// The animated layers are given the page's size here, so they fill it
+    /// without ever asking for more room. The page also clips them at its edges.
+    private void SizeBackdrop(Windows.Foundation.Size size)
+    {
+        BackdropHost.Width = size.Width;
+        BackdropHost.Height = size.Height;
+        BackdropGif.Width = BackdropVideo.Width = size.Width;
+        BackdropGif.Height = BackdropVideo.Height = size.Height;
+        LibraryView.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, size.Width, size.Height) };
+    }
+
+    private void NextSlide()
+    {
+        if (_selected is null || DetailsView.Visibility == Visibility.Visible || _bgVideo.Length > 0) return;
+        if (GameLibrary.AllBackdrops(_selected).Count < 2) return;
+        _slideIndex++;
+        ShowGameBackdrop(resetSlideshow: false);
+    }
+
+    private void StartBackdropVideo()
+    {
+        var g = _selected;
+        if (g is null || !App.Settings.AnimatedBackdrops) return;
+        string path = g.AnimatedBackground;
+        if (path.Length == 0 || !File.Exists(path) || !GameLibrary.IsVideo(path) || path == _bgVideo) return;
+        try
+        {
+            if (_bgPlayer is null)
+            {
+                // One player for the page's life, never thrown away while shown (that crashes WinUI).
+                _bgPlayer = new MediaPlayer { IsMuted = true, IsLoopingEnabled = true, AutoPlay = true };
+                _bgPlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(StopBackdropVideo);
+                BackdropVideo.SetMediaPlayer(_bgPlayer);
+            }
+            _bgVideo = path;
+            _bgPlayer.Source = MediaSource.CreateFromUri(new Uri(path));
+            Animate(BackdropVideo, "Opacity", 0.9, FadeMs);
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("LibraryPage.BackdropVideo", ex);
+            StopBackdropVideo();
+        }
+    }
+
+    private void StopBackdropVideo()
+    {
+        if (_bgVideo.Length == 0) return;
+        _bgVideo = "";
+        BackdropVideo.Opacity = 0;
+        try
+        {
+            _bgPlayer?.Pause();
+            if (_bgPlayer is not null) _bgPlayer.Source = null;
+        }
+        catch (Exception ex) { App.LogCrash("LibraryPage.StopBackdropVideo", ex); }
+    }
+
     /// Fade the page's backdrop over to a new picture.
     private void ShowBackdrop(string path, double opacity)
     {
@@ -188,10 +371,11 @@ public sealed partial class LibraryPage : Page
         if (key == _backdropShown) return;
         _backdropShown = key;
         var next = ReferenceEquals(_front, BackdropA) ? BackdropB : BackdropA;
-        next.Source = LoadPicture(path, 1920);
+        var brush = ReferenceEquals(next, BackdropA) ? BackdropABrush : BackdropBBrush;
+        brush.ImageSource = LoadPicture(path, 1920);
         // No reordering: one picture fading in while the other fades out looks the same
         // either way round, and raising a layer here once covered the whole page.
-        Animate(next, "Opacity", next.Source is null ? 0 : opacity, FadeMs);
+        Animate(next, "Opacity", brush.ImageSource is null ? 0 : opacity, FadeMs);
         Animate(_front, "Opacity", 0, FadeMs);
         _front = next;
     }
@@ -232,10 +416,13 @@ public sealed partial class LibraryPage : Page
         // Keep the highlighted game if it is still shown; otherwise highlight the first.
         var pick = shown.FirstOrDefault(i => ReferenceEquals(i.Game, _selected)) ?? shown.FirstOrDefault();
         _selected = pick?.Game;
+        double offset = _rowScroller?.HorizontalOffset ?? 0;
         _loading = true;
         GameGrid.ItemsSource = shown;
         GameGrid.SelectedItem = pick;
         _loading = false;
+        // A new list starts scrolled to the beginning: put the row back where it was.
+        if (offset > 0) _rowScroller?.ChangeView(offset, null, null, disableAnimation: true);
         Highlight(animate: false);
 
         bool filtered = _query.Length > 0 || _filter != AllGames;
@@ -271,11 +458,7 @@ public sealed partial class LibraryPage : Page
 
         ShowInfo();
 
-        var g = _selected;
-        if (g is null) ShowBackdrop("", 0);
-        else if (g.Background.Length > 0 && File.Exists(g.Background)) ShowBackdrop(g.Background, 0.9);
-        else if (g.Artwork.Length > 0 && File.Exists(g.Artwork)) ShowBackdrop(g.Artwork, 0.35); // the cover, enlarged and dimmed
-        else ShowBackdrop("", 0);
+        ShowGameBackdrop(resetSlideshow: true);
     }
 
     // ================= the name under the highlighted tile =================
@@ -486,6 +669,8 @@ public sealed partial class LibraryPage : Page
         StopTrailer();
         DetailsView.Opacity = 0;
         DetailsView.Visibility = Visibility.Collapsed;
+        // Wherever the mouse is resting now (e.g. where a picture was clicked) is not a hover.
+        _hoverAt = _lastPointer;
         LibraryView.IsHitTestVisible = true;
         if (GameGrid.SelectedItem is not null && GameGrid.ContainerFromItem(GameGrid.SelectedItem) is Control tile)
             tile.Focus(FocusState.Keyboard);
@@ -502,8 +687,8 @@ public sealed partial class LibraryPage : Page
         DetailArt.Source = cover;
         DetailInitials.Text = cover is null ? InitialsOf(g.Name) : "";
         string widePath = g.Background.Length > 0 ? g.Background : g.Artwork;
-        DetailWide.Source = LoadPicture(widePath, 1600);
-        DetailBlur.Source = LoadPicture(widePath, 40); // tiny, then stretched: a soft blur
+        DetailWideBrush.ImageSource = LoadPicture(widePath, 1600);
+        DetailBlurBrush.ImageSource = LoadPicture(widePath, 40); // tiny, then stretched: a soft blur
         DetailName.Text = g.Name;
         DetailMeta.Text = MetaLine(g);
 
@@ -516,6 +701,7 @@ public sealed partial class LibraryPage : Page
             : "No description yet. Choose GAME DETAILS, then Edit, to add one.";
         RawgCredit.Visibility = g.DetailsFrom == "RAWG" ? Visibility.Visible : Visibility.Collapsed; // RAWG asks for a link back
         TrailerButton.Visibility = g.TrailerUrl.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        FillBackdropPicker(g);
 
         AchievementsButton.Visibility = g.SteamAppId != 0 ? Visibility.Visible : Visibility.Collapsed;
         string? launcher = LauncherName(g);
@@ -523,6 +709,51 @@ public sealed partial class LibraryPage : Page
         ToolTipService.SetToolTip(LauncherButton, launcher is null ? null : $"Open in {launcher}");
         FavouriteItem.Text = g.Favourite ? "Remove from favourites" : "Add to favourites";
         FolderItem.IsEnabled = GameLibrary.InstallFolder(g).Length > 0;
+    }
+
+    /// Small pictures of the game's backdrops along the bottom of the wide
+    /// picture; picking one makes it the game's backdrop. Only with "pick one"
+    /// in Settings and more than one backdrop.
+    private void FillBackdropPicker(LibraryGame g)
+    {
+        BackdropPicker.Children.Clear();
+        var pictures = GameLibrary.AllBackdrops(g);
+        bool show = App.Settings.BackdropMode != "Slideshow" && pictures.Count > 1;
+        BackdropPicker.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+        var accent = (Brush)Application.Current.Resources["DxoAccent"];
+        foreach (string path in pictures)
+        {
+            bool chosen = string.Equals(path, g.Background, StringComparison.OrdinalIgnoreCase);
+            var thumb = new Button
+            {
+                Width = 120,
+                Height = 68,
+                Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(4),
+                BorderThickness = new Thickness(chosen ? 3 : 1),
+                BorderBrush = chosen ? accent : new SolidColorBrush(Windows.UI.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
+                Content = new Image { Source = LoadPicture(path, 240), Stretch = Stretch.UniformToFill },
+                FocusVisualPrimaryBrush = accent,
+                Tag = path,
+            };
+            ToolTipService.SetToolTip(thumb, chosen ? "This game's backdrop" : "Use this backdrop");
+            string mine = path;
+            thumb.Click += (_, _) =>
+            {
+                g.Background = mine;
+                GameLibrary.Save(_games);
+                DetailWideBrush.ImageSource = LoadPicture(mine, 1600);
+                DetailBlurBrush.ImageSource = LoadPicture(mine, 40);
+                FillBackdropPicker(g);
+                // The clicked button was just replaced: put focus on its new copy, so it
+                // doesn't fall through to the game row hidden behind the details screen.
+                if (BackdropPicker.Children.OfType<Button>().FirstOrDefault(b => ReferenceEquals(b.Tag, mine)) is { } again)
+                    again.Focus(FocusState.Programmatic);
+                ShowGameBackdrop(resetSlideshow: false); // ready behind the details screen
+            };
+            BackdropPicker.Children.Add(thumb);
+        }
     }
 
     /// "Developer  ·  2020  ·  71.4 GB", leaving out what isn't known.
@@ -777,6 +1008,20 @@ public sealed partial class LibraryPage : Page
         App.Engine?.SetKnownGames(_games.Where(g => g.Exe.Length > 0).Select(g => g.Exe));
     }
 
+    /// A game's pictures or details changed in the background: update its tile,
+    /// and if it is the highlighted one, its name line, backdrop and details.
+    /// The row itself is left alone, so it doesn't jump while downloads finish.
+    private void RefreshGame(LibraryGame g)
+    {
+        foreach (object o in GameGrid.Items)
+            if (o is LibraryItem it && ReferenceEquals(it.Game, g)) it.Refresh();
+        if (!ReferenceEquals(g, _selected)) return;
+        ShowInfo();
+        ShowGameBackdrop(resetSlideshow: false); // fades only if the picture actually changed
+        // Refill the details screen, unless a trailer is playing (refilling stops it).
+        if (DetailsView.Visibility == Visibility.Visible && Trailer.Source is null) FillDetails();
+    }
+
     /// Games missing details or pictures: look them up online, a few at a
     /// time, quietly. Each game is asked about once.
     private async Task FillMissingAsync()
@@ -791,11 +1036,7 @@ public sealed partial class LibraryPage : Page
                 if (_leaving.IsCancellationRequested) break;
                 bool changed = await GameMetadata.FillMissingAsync(g, _leaving.Token);
                 GameLibrary.Save(_games);
-                if (changed)
-                {
-                    ShowGames();
-                    if (ReferenceEquals(g, _selected) && DetailsView.Visibility == Visibility.Visible) FillDetails();
-                }
+                if (changed) RefreshGame(g);
                 await Task.Delay(1200, _leaving.Token); // stay well inside the sources' limits
             }
         }
@@ -933,7 +1174,39 @@ public sealed partial class LibraryPage : Page
         form.Children.Add(description);
         form.Children.Add(pathRow);
         form.Children.Add(PictureRow("Cover picture...", g.Artwork.Length > 0 ? "A cover is set." : "No cover yet (upright, like a game box, fits best).", f => newCover = f));
+        // Animated background: a GIF or a short video; Remove clears one already set.
+        string? newAnim = null;
+        bool clearAnim = false;
+        var animLabel = new TextBlock
+        {
+            Text = g.AnimatedBackground.Length > 0 ? System.IO.Path.GetFileName(g.AnimatedBackground) : "None (optional: GIF, MP4, WebM or MOV)",
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 230,
+        };
+        var animPick = new Button { Content = "Animated background..." };
+        animPick.Click += (_, _) =>
+        {
+            string? file = FileDialogs.Open("Pick a GIF or a short video", ("GIFs and videos", "*.gif;*.mp4;*.webm;*.mov;*.m4v"), ("All files", "*.*"));
+            if (file is null) return;
+            newAnim = file;
+            clearAnim = false;
+            animLabel.Text = System.IO.Path.GetFileName(file);
+        };
+        var animClear = new Button { Content = "Remove" };
+        animClear.Click += (_, _) =>
+        {
+            newAnim = null;
+            clearAnim = true;
+            animLabel.Text = "None";
+        };
+        var animRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        animRow.Children.Add(animPick);
+        animRow.Children.Add(animClear);
+        animRow.Children.Add(animLabel);
+
         form.Children.Add(PictureRow("Background picture...", g.Background.Length > 0 ? "A background is set." : "No background yet (wide, like a screenshot).", f => newWide = f));
+        form.Children.Add(animRow);
 
         var dlg = new ContentDialog
         {
@@ -969,6 +1242,9 @@ public sealed partial class LibraryPage : Page
 
         if (newCover is not null && !GameLibrary.ImportArt(g, newCover))
             SetStatus("That cover couldn't be used (png, jpg, bmp, gif or webp only).");
+        if (clearAnim) GameLibrary.ClearAnimated(g);
+        if (newAnim is not null && !GameLibrary.ImportAnimated(g, newAnim))
+            SetStatus("That animated background couldn't be used (GIF, MP4, WebM or MOV, under 500 MB).");
         if (newWide is not null && !GameLibrary.ImportArt(g, newWide, backdrop: true))
             SetStatus("That background couldn't be used (png, jpg, bmp, gif or webp only).");
 

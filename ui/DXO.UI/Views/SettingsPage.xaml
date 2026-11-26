@@ -80,6 +80,27 @@
                 <ToggleSwitch x:Name="BatteryToggle" Toggled="Battery_Toggled" />
             </controls:SettingsCard>
 
+            <TextBlock Text="Games page" Style="{StaticResource DxoSectionTitle}" />
+            <controls:SettingsCard Header="Tile size" Description="How big the game covers are in the Games row. 100% is the normal size.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE740;" /></controls:SettingsCard.HeaderIcon>
+                <Slider x:Name="TileSizeSlider" Width="220" Minimum="75" Maximum="150" StepFrequency="5" ValueChanged="TileSize_Changed" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Living backdrop" Description="The game's artwork slowly zooms and drifts behind the page, so it feels alive.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE91B;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="LivingToggle" Toggled="GamesPage_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Animated backgrounds" Description="Play a game's animated background (a GIF or short video you add under Game details, Edit) instead of its picture. Muted, and only for the highlighted game.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE714;" /></controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="AnimatedToggle" Toggled="GamesPage_Toggled" />
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Several backgrounds" Description="DXO keeps up to three backgrounds per game. Pick one: choose your favourite on the game's details screen. Slideshow: they fade from one to the next.">
+                <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8B9;" /></controls:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="BackdropModeBox" Width="160" SelectionChanged="BackdropMode_Changed">
+                    <ComboBoxItem Content="Pick one" Tag="Pick" />
+                    <ComboBoxItem Content="Slideshow" Tag="Slideshow" />
+                </ComboBox>
+            </controls:SettingsCard>
+
             <TextBlock Text="Animations" Style="{StaticResource DxoSectionTitle}" />
             <controls:SettingsCard Header="Window animation scale" Description="The controller card growing out of a pill and closing again.">
                 <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE737;" /></controls:SettingsCard.HeaderIcon>

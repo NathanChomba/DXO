@@ -39,9 +39,26 @@
         <Grid x:Name="LibraryView">
             <!-- The highlighted game's artwork, behind everything. Two layers so one can fade into the other. -->
             <!-- Their own layer: the cross-fade reorders these two, and must never lift one over the page. -->
-            <Grid IsHitTestVisible="False">
-                <Image x:Name="BackdropA" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" />
-                <Image x:Name="BackdropB" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" />
+            <Grid x:Name="BackdropHost" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <!-- The slow zoom and drift of the "living backdrop" setting. -->
+                    <CompositeTransform x:Name="BackdropMotion" />
+                </Grid.RenderTransform>
+                <!-- Pictures are painted as fills, never as Image controls: an Image set to fill
+                     the screen asks for its picture's own shape, which made the page lay out wider
+                     than the window and pushed the game row sideways whenever the backdrop changed. -->
+                <Border x:Name="BackdropA" Opacity="0">
+                    <Border.Background><ImageBrush x:Name="BackdropABrush" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" /></Border.Background>
+                </Border>
+                <Border x:Name="BackdropB" Opacity="0">
+                    <Border.Background><ImageBrush x:Name="BackdropBBrush" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" /></Border.Background>
+                </Border>
+                <!-- Animated backgrounds. Sized from code to the page (0 until then) for the same reason;
+                     a GIF needs an Image to animate. -->
+                <Image x:Name="BackdropGif" Stretch="UniformToFill" Width="0" Height="0" Opacity="0"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <MediaPlayerElement x:Name="BackdropVideo" Stretch="UniformToFill" AreTransportControlsEnabled="False" Opacity="0"
+                                    Width="0" Height="0" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Grid>
             <!-- Darkened towards the left and the bottom so text and tiles stay readable. -->
             <Border IsHitTestVisible="False">
@@ -114,7 +131,7 @@
                     <GridView.ItemTemplate>
                         <DataTemplate>
                             <!-- Box-art shape (2:3), so a game's cover is always shown whole. -->
-                            <Grid Width="140" Height="210" CornerRadius="6" Background="#FF0E0E12">
+                            <Grid Width="{Binding TileWidth}" Height="{Binding TileHeight}" CornerRadius="6" Background="#FF0E0E12">
                                 <TextBlock Text="{Binding Initials}" FontSize="40" FontWeight="SemiBold" Foreground="{StaticResource DxoTextMuted}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 <!-- Never cropped: a picture of another shape gets a dark border instead. -->
@@ -144,7 +161,9 @@
         <!-- ===================== one game's details ===================== -->
         <Grid x:Name="DetailsView" Visibility="Collapsed" Opacity="0">
             <!-- The game's own artwork, blurred and dimmed. -->
-            <Image x:Name="DetailBlur" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.75" />
+<Border x:Name="DetailBlur" Opacity="0.75" IsHitTestVisible="False">
+                    <Border.Background><ImageBrush x:Name="DetailBlurBrush" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" /></Border.Background>
+                </Border>
             <Border Background="#B8131318" IsHitTestVisible="False" />
 
             <Grid Padding="56,34,56,26" RowSpacing="18">
@@ -200,8 +219,13 @@
 
                     <!-- middle: the wide picture, or the trailer playing -->
                     <Grid Grid.Column="1" CornerRadius="4" Background="#FF0E0E12">
-                        <Image x:Name="DetailWide" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+<Border x:Name="DetailWide">
+                    <Border.Background><ImageBrush x:Name="DetailWideBrush" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" /></Border.Background>
+                </Border>
                         <MediaPlayerElement x:Name="Trailer" Visibility="Collapsed" Stretch="Uniform" AreTransportControlsEnabled="True" />
+                        <!-- Choose this game's backdrop (when it has several and Settings is on "pick one"). -->
+                        <StackPanel x:Name="BackdropPicker" Orientation="Horizontal" Spacing="8" Margin="12"
+                                    HorizontalAlignment="Left" VerticalAlignment="Bottom" Visibility="Collapsed" />
                         <Button x:Name="TrailerButton" Width="64" Height="64" CornerRadius="32" Padding="0" BorderThickness="0"
                                 Background="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"
                                 ToolTipService.ToolTip="Play the trailer" Click="Trailer_Click" Visibility="Collapsed"

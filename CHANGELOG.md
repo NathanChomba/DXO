@@ -3,6 +3,36 @@
 All notable changes to DXO. Versions follow [Semantic Versioning](https://semver.org);
 while DXO is below 1.0, any release may change settings or profiles.
 
+## [Unreleased]
+
+### Added
+- Games page settings (Settings > Games page), from reviewer feedback:
+  - **Tile size:** make the game covers bigger or smaller.
+  - **Living backdrop:** the artwork slowly zooms and drifts so it feels alive.
+  - **Animated backgrounds:** give a game a GIF or a short looping video
+    (MP4, WebM, MOV) as its background, under Game details > Edit.
+  - **Several backgrounds:** DXO keeps up to three backgrounds per game. Choose
+    your favourite on the game's details screen, or let them play as a slideshow.
+
+## [0.3.1] - unreleased
+
+A fix-up release for 0.3: steadier input timing and a safety net for crashes.
+
+### Fixed
+- **Input path no longer allocates.** The controller loop used to copy the
+  whole profile and build temporary lists for every input report (up to
+  1,000 a second). It now shares the profile, resolves button names without
+  allocating, and reuses its buffers, so input timing no longer depends on
+  the memory allocator.
+- **Lightbar, rumble and triggers no longer hold up input.** Output reports
+  are written on their own thread through a second handle to the controller.
+  A slow Bluetooth write used to delay the next input report; now only the
+  newest output report is kept and written when the controller is ready.
+- **A crash no longer leaves your controller hidden from games.** DXO now
+  keeps a list of the controllers it hides (`%LOCALAPPDATA%\DXO\hidden.txt`).
+  If DXO crashes or is killed, the next start unhides them first, and
+  uninstalling DXO unhides them too.
+
 ## [0.3.0] - 2026-11-15
 
 The biggest release so far: everything on the road map from milestone 1 to 7.1.
@@ -120,6 +150,8 @@ console-style games library.
 - A clear starting highlight, and each page remembers where you were.
 
 ### Changed
+- Two downloads per release: a small one that needs the .NET 10 Desktop
+  Runtime installed once, and a "-with-dotnet" one that includes it.
 - The navigation menu is locked to its icons-only strip on every page.
   Options on the controller now opens a game's details on the Games page.
 - The old Games page (which profile each game uses) is now **Game profiles**,
@@ -163,5 +195,6 @@ First review build.
 - System chords (PS + button).
 - Tray, start with Windows, installer, diagnostics.
 
+[0.3.1]: https://github.com/NathanChomba/DXO/releases/tag/v0.3.1
 [0.3.0]: https://github.com/NathanChomba/DXO/releases/tag/v0.3.0
 [0.2.0]: https://github.com/NathanChomba/DXO/releases/tag/v0.2.0

@@ -26,6 +26,10 @@ public sealed partial class SettingsPage : Page
         BatteryToggle.IsOn = App.Settings.LowBatteryWarning;
         KeyboardToggle.IsOn = App.Settings.OnScreenKeyboard;
         OnlineToggle.IsOn = App.Settings.OnlineGameLookups;
+        TileSizeSlider.Value = Math.Clamp(Math.Round(App.Settings.GameTileScale * 100), 75, 150);
+        LivingToggle.IsOn = App.Settings.LivingBackdrop;
+        AnimatedToggle.IsOn = App.Settings.AnimatedBackdrops;
+        BackdropModeBox.SelectedIndex = App.Settings.BackdropMode == "Slideshow" ? 1 : 0;
         SgdbKeyBox.Password = App.Settings.SteamGridDbKey;
         RawgKeyBox.Password = App.Settings.RawgKey;
         WinKeyboardToggle.IsOn = App.Settings.UseWindowsKeyboard;
@@ -124,6 +128,29 @@ public sealed partial class SettingsPage : Page
         App.Settings.OnScreenKeyboard = KeyboardToggle.IsOn;
         App.Settings.Save();
         App.Engine?.SetOskEnabled(KeyboardToggle.IsOn);
+    }
+
+    // Games page settings take effect the next time the Games page opens.
+    private void TileSize_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.GameTileScale = e.NewValue / 100.0;
+        App.Settings.Save();
+    }
+
+    private void GamesPage_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.LivingBackdrop = LivingToggle.IsOn;
+        App.Settings.AnimatedBackdrops = AnimatedToggle.IsOn;
+        App.Settings.Save();
+    }
+
+    private void BackdropMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        App.Settings.BackdropMode = (BackdropModeBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "Pick";
+        App.Settings.Save();
     }
 
     private void Online_Toggled(object sender, RoutedEventArgs e)

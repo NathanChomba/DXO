@@ -25,8 +25,14 @@ public sealed class LibraryGame
     public string Description { get; set; } = "";
     /// Full path of the cover picture (a copy kept in DXO's own folder), or "".
     public string Artwork { get; set; } = "";
-    /// Full path of the wide backdrop picture shown behind the Games page, or "".
+    /// Full path of the wide backdrop shown behind the Games page (the chosen one), or "".
     public string Background { get; set; } = "";
+    /// Every backdrop DXO has for the game (up to three), chosen one included.
+    public List<string> Backgrounds { get; set; } = new();
+    /// Fetched extra backdrops (up to three) already, found or not.
+    public bool ExtraBackdropsTried { get; set; }
+    /// An animated background picked by the player: a GIF or a short video, or "".
+    public string AnimatedBackground { get; set; } = "";
     /// Looked for a backdrop online already (found or not), so DXO doesn't ask again every visit.
     public bool BackdropTried { get; set; }
     /// The game's number in the Steam store, when known (0 = unknown).
@@ -154,6 +160,86 @@ public static class GameLibrary
         }
     }
 
+    /// Most backdrops kept per game.
+    public const int MaxBackdrops = 3;
+
+    /// The game's backdrops that still exist on disk, the chosen one first.
+    public static List<string> AllBackdrops(LibraryGame g)
+    {
+        var list = new List<string>();
+        if (g.Background.Length > 0 && File.Exists(g.Background)) list.Add(g.Background);
+        foreach (string b in g.Backgrounds)
+            if (b.Length > 0 && File.Exists(b) && !list.Contains(b, StringComparer.OrdinalIgnoreCase)) list.Add(b);
+        return list;
+    }
+
+    /// Keep one more backdrop for the game. `front` puts it first and makes it
+    /// the chosen one (a picture the player picked); otherwise it joins the end
+    /// and is chosen only if the game had none. Beyond three, the oldest
+    /// downloaded one is dropped.
+    public static bool AddBackdrop(LibraryGame g, byte[] picture, string ext, bool front)
+    {
+        try
+        {
+            if (picture.Length == 0) return false;
+            Directory.CreateDirectory(ArtDir);
+            string dest = System.IO.Path.Combine(ArtDir, $"{g.Id}-wide-{DateTime.UtcNow.Ticks}{ext}");
+            File.WriteAllBytes(dest, picture);
+            var list = AllBackdrops(g);
+            if (front) list.Insert(0, dest);
+            else list.Add(dest);
+            while (list.Count > MaxBackdrops)
+            {
+                string drop = list[^1];
+                list.RemoveAt(list.Count - 1);
+                if (drop.StartsWith(ArtDir, StringComparison.OrdinalIgnoreCase))
+                    try { File.Delete(drop); } catch { /* in use: left behind, harmless */ }
+            }
+            g.Backgrounds = list;
+            if (front || g.Background.Length == 0 || !File.Exists(g.Background)) g.Background = list[0];
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("GameLibrary.AddBackdrop", ex);
+            return false;
+        }
+    }
+
+    /// Copy an animated background (GIF or short video) the player chose into
+    /// DXO's art folder. Returns false if the file isn't a kind DXO can play.
+    public static bool ImportAnimated(LibraryGame g, string sourceFile)
+    {
+        try
+        {
+            string ext = System.IO.Path.GetExtension(sourceFile).ToLowerInvariant();
+            if (ext is not (".gif" or ".mp4" or ".webm" or ".mov" or ".m4v")) return false;
+            if (new FileInfo(sourceFile).Length > 500L * 1024 * 1024) return false; // keep it a short loop
+            Directory.CreateDirectory(ArtDir);
+            string dest = System.IO.Path.Combine(ArtDir, $"{g.Id}-anim-{DateTime.UtcNow.Ticks}{ext}");
+            File.Copy(sourceFile, dest, overwrite: true);
+            ClearAnimated(g);
+            g.AnimatedBackground = dest;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("GameLibrary.ImportAnimated", ex);
+            return false;
+        }
+    }
+
+    public static void ClearAnimated(LibraryGame g)
+    {
+        string old = g.AnimatedBackground;
+        g.AnimatedBackground = "";
+        if (old.Length > 0 && old.StartsWith(ArtDir, StringComparison.OrdinalIgnoreCase))
+            try { File.Delete(old); } catch { /* playing right now: left behind, harmless */ }
+    }
+
+    public static bool IsVideo(string path) =>
+        System.IO.Path.GetExtension(path).ToLowerInvariant() is ".mp4" or ".webm" or ".mov" or ".m4v";
+
     /// Copy a picture the player chose into DXO's art folder and make it the
     /// game's cover, or its backdrop. Returns false if the file couldn't be copied.
     public static bool ImportArt(LibraryGame g, string sourceFile, bool backdrop = false)
@@ -178,9 +264,10 @@ public static class GameLibrary
         try
         {
             if (picture.Length == 0) return false;
+            if (backdrop) return AddBackdrop(g, picture, ext, front: true);
             Directory.CreateDirectory(ArtDir);
             // A new file name every time, so the app never shows a stale cached picture.
-            string kind = backdrop ? "wide" : "cover";
+            string kind = "cover";
             string dest = System.IO.Path.Combine(ArtDir, $"{g.Id}-{kind}-{DateTime.UtcNow.Ticks}{ext}");
             File.WriteAllBytes(dest, picture);
             string old = backdrop ? g.Background : g.Artwork;

@@ -1,0 +1,26 @@
+name: Request a profile
+description: Ask for a setup for a game that doesn't have one yet.
+title: "Request: <game>"
+labels: [request]
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      placeholder: Call of Duty
+    validations:
+      required: true
+  - type: dropdown
+    id: controller
+    attributes:
+      label: Controller
+      options: [DualSense, DualSense Edge, DualShock 4, Switch Pro, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: want
+    attributes:
+      label: What should it do?
+      placeholder: Gyro aiming while L2 is held, jump on a back paddle...
+    validations:
+      required: true

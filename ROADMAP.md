@@ -146,6 +146,19 @@ release dates are filled in online like pictures. Trailer playback is
   online; manual entry still works. Missing backdrops are sourced online,
   else the cover is shown enlarged and dimmed.
 
+## 7.2 · Games page: reviewer requests
+
+From Sean's review of 0.3.0 (15 Nov 2026). All are settings under
+Settings > Games page. Built 15 Nov, **not built or run on Windows yet**.
+
+| Item | Status | Where |
+|---|---|---|
+| Tile size | built | `AppSettings.GameTileScale` (75-150 %); tiles bind `LibraryItem.TileWidth/TileHeight` |
+| Living backdrop (slow zoom and drift) | built | `LibraryPage.StartLivingBackdrop` animates `BackdropMotion`; on by default |
+| Animated backgrounds (GIF or video, per game) | built | picked in Game details > Edit; GIFs play in the backdrop images, videos (MP4, WebM, MOV) in `BackdropVideo`, muted and looped, only for the highlighted game |
+| Three backgrounds per game, slideshow or pick one | built | `GameLibrary.AddBackdrop` keeps up to 3 (duplicates skipped by content); sources: Steam hero + screenshots, SteamGridDB heroes. "Pick one" shows thumbnails on the details screen; "Slideshow" fades every 12 s |
+| Scan a games folder (e.g. C:\Games) | **not built** | Add every game in a chosen folder, guessing the title from the folder name and the right .exe, and asking when unsure; then fetch art and suggest a community profile |
+
 ## 8 and beyond
 
 To be restructured. Carried over from the PDF: accessibility (8), reliability

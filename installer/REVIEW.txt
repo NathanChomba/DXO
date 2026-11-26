@@ -21,9 +21,10 @@ This is an early, UNSIGNED review build. A few one-time setup steps:
      real controller from games. Click Yes.
    - Because this build isn't code-signed yet, the prompt says
      "unknown publisher". That's expected for a review build; it's safe to allow.
-   - If Windows says a .NET component is missing, install the
-     ".NET Desktop Runtime 10.0 (x64)" once from
-     https://dotnet.microsoft.com/download/dotnet/10.0 , then run it again.
+   - Got the "-with-dotnet" download? Nothing else to install.
+     Got the smaller one? Install the ".NET Desktop Runtime 10.0 (x64)" once
+     from https://dotnet.microsoft.com/download/dotnet/10.0 (Windows will
+     also ask for it the first time if it's missing).
 
 4) Connect a controller over USB, or pair it over Bluetooth
    (hold PS + Share until the light flashes, then pair in Windows settings).

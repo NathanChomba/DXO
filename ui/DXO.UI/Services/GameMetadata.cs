@@ -175,8 +175,8 @@ public static class GameMetadata
         string header = Str(data, "header_image");
         if (data.TryGetProperty("screenshots", out var shots) && shots.ValueKind == JsonValueKind.Array)
         {
-            string shot = shots.EnumerateArray().Select(x => Str(x, "path_full")).FirstOrDefault(x => x.Length > 0) ?? "";
-            if (shot.Length > 0) d.BackdropUrls.Add(shot);
+            // A few screenshots: with the hero picture they make up to three backdrops.
+            d.BackdropUrls.AddRange(shots.EnumerateArray().Select(x => Str(x, "path_full")).Where(x => x.Length > 0).Take(3));
         }
         if (header.Length > 0)
         {
@@ -236,7 +236,8 @@ public static class GameMetadata
         {
             var urls = new List<string>(d.BackdropUrls);
             if (sgdbId != 0) urls.InsertRange(Math.Min(1, urls.Count), await SgdbPicturesAsync("heroes", sgdbId, "", ct));
-            any |= await SaveFirstAsync(g, urls, backdrop: true, ct);
+            any |= await AddBackdropsAsync(g, urls, ct);
+            g.ExtraBackdropsTried = true;
         }
         return any;
     }
@@ -244,6 +245,7 @@ public static class GameMetadata
     /// Does this game still need anything looked up online?
     public static bool NeedsLookup(LibraryGame g) =>
         (!g.BackdropTried && (g.Background.Length == 0 || g.Artwork.Length == 0))
+        || (!g.ExtraBackdropsTried && GameLibrary.AllBackdrops(g).Count < GameLibrary.MaxBackdrops)
         || (!g.DetailsTried && (g.Description.Length == 0 || g.Genre.Length == 0 || g.ReleaseDate.Length == 0));
 
     /// Fill in what a game is missing: description, genre, developer, release
@@ -276,13 +278,17 @@ public static class GameMetadata
             }
             g.DetailsTried = true;
 
-            if (!g.BackdropTried)
+            bool needCover = !g.BackdropTried && g.Artwork.Length == 0;
+            bool needBackdrops = (!g.BackdropTried && g.Background.Length == 0)
+                || (!g.ExtraBackdropsTried && GameLibrary.AllBackdrops(g).Count < GameLibrary.MaxBackdrops);
+            if (needCover || needBackdrops)
             {
                 // Unknown to Steam and RAWG: SteamGridDB can still search by name.
                 d ??= new GameDetails { Name = g.Name };
-                changed |= await ApplyArtAsync(g, d, g.Artwork.Length == 0, g.Background.Length == 0, ct);
-                g.BackdropTried = true;
+                changed |= await ApplyArtAsync(g, d, needCover, needBackdrops, ct);
             }
+            g.BackdropTried = true;
+            g.ExtraBackdropsTried = true;
             return changed;
         }
         catch (Exception ex) when (IsNetwork(ex))
@@ -290,6 +296,29 @@ public static class GameMetadata
             return false; // offline: try again another day
         }
     }
+
+    /// Download backdrops until the game has three, skipping any picture it
+    /// already has (compared by content, so a re-download isn't kept twice).
+    private static async Task<bool> AddBackdropsAsync(LibraryGame g, IEnumerable<string> urls, CancellationToken ct)
+    {
+        var have = new HashSet<string>();
+        foreach (string f in GameLibrary.AllBackdrops(g))
+        {
+            try { have.Add(Hash(await System.IO.File.ReadAllBytesAsync(f, ct))); }
+            catch (System.IO.IOException) { }
+        }
+        bool any = false;
+        foreach (string url in urls.Where(u => u.StartsWith("https://", StringComparison.OrdinalIgnoreCase)).Distinct())
+        {
+            if (GameLibrary.AllBackdrops(g).Count >= GameLibrary.MaxBackdrops) break;
+            var (bytes, ext) = await DownloadPictureAsync(url, ct);
+            if (bytes is null || !have.Add(Hash(bytes))) continue;
+            any |= GameLibrary.AddBackdrop(g, bytes, ext, front: false);
+        }
+        return any;
+    }
+
+    private static string Hash(byte[] data) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data));
 
     private static async Task<bool> SaveFirstAsync(LibraryGame g, IEnumerable<string> urls, bool backdrop, CancellationToken ct)
     {

@@ -57,6 +57,15 @@ public sealed class AppSettings
     /// SteamGridDB / RAWG when their keys are filled in). Only while adding a
     /// game or filling in a missing backdrop.
     public bool OnlineGameLookups { get; set; } = true;
+    /// Games page: size of the game tiles (1 = normal).
+    public double GameTileScale { get; set; } = 1.0;
+    /// Games page: the backdrop slowly zooms and drifts so it feels alive.
+    public bool LivingBackdrop { get; set; } = true;
+    /// Games page: play a game's animated background (GIF or video) when it has one.
+    public bool AnimatedBackdrops { get; set; } = true;
+    /// Games page: with several backdrops, "Slideshow" fades through them,
+    /// "Pick" shows the one chosen in the game's details.
+    public string BackdropMode { get; set; } = "Pick";
     /// The player's own SteamGridDB key ("" = not used). Never leaves this PC except to SteamGridDB.
     public string SteamGridDbKey { get; set; } = "";
     /// The player's own RAWG key ("" = not used).
